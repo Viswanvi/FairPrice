@@ -3,11 +3,13 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { demoBannerText, priceHeadline } from "@/lib/checkout/display";
 import { buildQuote } from "@/lib/checkout/quote";
+import { defaultVoiceLanguage } from "@/lib/checkout/voice";
 import { prisma } from "@/lib/db/client";
 import { getApprovedTable } from "@/lib/db/price-tables";
 import { env } from "@/lib/env";
 import { displayCountry } from "@/lib/geo/country";
 import { formatUsd } from "@/lib/seller/format";
+import { PriceVoice, VoiceProvider } from "../../_components/voice";
 import { CheckoutFlow } from "../../checkout/checkout-flow";
 
 /**
@@ -53,9 +55,18 @@ export default async function BuyerPage({ params, searchParams }: PageProps<"/p/
   const quote = buildQuote(product, table, geo);
   const headline = priceHeadline(quote);
   const description = product.description?.trim();
+  const fairPriceNote = quote.requirePaypal && quote.inTable && quote.priceCents < quote.standardCents;
+  const voicePrice = {
+    priceCents: quote.priceCents,
+    standardCents: quote.standardCents,
+    shownCountry: quote.shownCountry,
+    inTable: quote.inTable,
+    fairPriceNote,
+  };
 
   return (
     <Shell banner={quote.overridden && quote.shownCountry ? demoBannerText(quote.shownCountry) : null}>
+      <VoiceProvider initialLang={defaultVoiceLanguage(quote.shownCountry)} price={voicePrice}>
       <section className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{product.title}</h1>
@@ -72,10 +83,12 @@ export default async function BuyerPage({ params, searchParams }: PageProps<"/p/
             )}
           </div>
           <p className="text-sm font-medium text-accent-strong">{headline.label}</p>
-          {quote.requirePaypal && quote.inTable && quote.priceCents < quote.standardCents && (
+          {fairPriceNote && (
             <p className="text-xs text-ink-3">Fair prices need a PayPal account; card payments pay the standard price.</p>
           )}
         </div>
+
+        <PriceVoice />
 
         <CheckoutFlow productId={product.id} as={quote.overridden ? quote.shownCountry : null} />
 
@@ -84,6 +97,7 @@ export default async function BuyerPage({ params, searchParams }: PageProps<"/p/
           different price applies there, you&apos;re never charged more than you approved.
         </p>
       </section>
+      </VoiceProvider>
     </Shell>
   );
 }

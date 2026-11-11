@@ -17,6 +17,30 @@ test("India visitor sees the fair price, the demo banner and the PayPal button",
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
+test("India visitor gets the explanation in Hindi with a Listen button, and can switch language", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}?as=IN`);
+  const voice = page.getByTestId("price-voice");
+  await expect(voice.getByRole("combobox")).toHaveValue("hi");
+  await expect(voice.getByRole("button", { name: "सुनें" })).toBeVisible();
+  await expect(voice.locator('p[lang="hi-IN"]')).toContainText("आपकी कीमत 35 डॉलर है, जो भारत के लिए उचित कीमत है।");
+
+  await voice.getByRole("combobox").selectOption("pt-BR");
+  await expect(voice.getByRole("button", { name: "Ouvir" })).toBeVisible();
+  await expect(voice.locator('p[lang="pt-BR"]')).toContainText("Seu preço é 35 dólares");
+
+  await voice.getByRole("combobox").selectOption("en");
+  await expect(voice.getByRole("button", { name: "Listen" })).toBeVisible();
+  await expect(voice.locator("p[lang]")).toHaveCount(0); // English is already on the page
+});
+
+test("Brazil and Mexico visitors start in Portuguese and Spanish", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}?as=BR`);
+  await expect(page.getByTestId("price-voice").getByRole("combobox")).toHaveValue("pt-BR");
+  await page.goto(`/p/${E2E.buyerProduct}?as=MX`);
+  await expect(page.getByTestId("price-voice").getByRole("combobox")).toHaveValue("es");
+  await expect(page.getByTestId("price-voice").getByRole("button", { name: "Escuchar" })).toBeVisible();
+});
+
 test("US visitor sees the US price with 'the'", async ({ page }) => {
   await page.goto(`/p/${E2E.buyerProduct}?as=US`);
   await expect(page.getByText("Fair price for the United States, verified by PayPal at checkout")).toBeVisible();

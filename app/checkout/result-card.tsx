@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cx } from "../_components/ui";
+import { ResultVoice } from "../_components/voice";
 import type { CheckoutResult, CheckoutResultCode } from "@/lib/checkout/messages";
 
 /**
@@ -60,6 +61,7 @@ export function ResultCard({
               PayPal order <span className="font-mono">{paypalOrderId}</span>
             </p>
           )}
+          <ResultVoice result={result} />
         </div>
       </div>
       {children}

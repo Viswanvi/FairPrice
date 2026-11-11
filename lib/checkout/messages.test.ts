@@ -90,6 +90,14 @@ describe("resultFromOrder — SPEC section 3 / 9 copy", () => {
   });
 });
 
+describe("resultFromOrder — the approved amount travels with every result", () => {
+  it("carries shownCents (the amount the buyer approved) for every status", () => {
+    for (const status of ["CREATED", "AUTHORIZED", "CAPTURED", "VOIDED", "DECLINED", "NEEDS_REVIEW"] as const) {
+      expect(resultFromOrder(order({ status, shownCents: 1600, chargedCents: 1600, offerCents: 3900 })).shownCents).toBe(1600);
+    }
+  });
+});
+
 describe("countryPhrase", () => {
   it("adds 'the' where English needs it", () => {
     expect(countryPhrase("US")).toBe("the United States");

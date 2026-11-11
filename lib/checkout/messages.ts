@@ -26,6 +26,8 @@ export interface CheckoutResult {
   productId: string;
   decision: DecisionCode | null;
   chargedCents: number;
+  /** The amount the buyer approved in PayPal (the authorized amount). */
+  shownCents: number;
   /** The payer's PayPal account country, when known. */
   country: string | null;
   /** The price offered after a void (re-offer button), when there is one. */
@@ -61,6 +63,7 @@ export function resultFromOrder(order: OrderForResult): CheckoutResult {
     productId: order.productId,
     decision: order.decision,
     chargedCents: order.status === "CAPTURED" ? (order.chargedCents ?? 0) : 0,
+    shownCents: order.shownCents,
     country: order.payerCountry,
     offerCents: null as number | null,
     canReoffer: false,

@@ -23,6 +23,12 @@ pay a single US price, and every pricing decision is recorded against its PayPal
    approves a versioned, hashed table.
 3. **Buyer sees their country's price.** The price shown comes from the visitor's IP country,
    and is for display only.
+   - **In their own language:** the price, PayPal's promise and, later, the payment result can
+     be read in Hindi, Portuguese, Spanish or English. Press **Listen** to hear them read aloud.
+   - **Language:** it starts from the visitor's country (India → Hindi, Brazil → Portuguese,
+     Spanish-speaking countries → Spanish) and can be changed.
+   - **Fixed sentences:** these are fixed translations of the page's own wording, read by the
+     browser's built-in voice. No AI writes anything about money at runtime.
 4. **PayPal decides what is charged.** The order is only *authorized* at first. FairPrice then
    reads the payer's account country from PayPal and compares it with the approved table:
    - if they match, the order is captured;
@@ -41,6 +47,9 @@ submission. Locally, it's your `SELLER_DEMO_PASSWORD`.
    The page shows the buyer link.
 2. Open the buyer link in a **private window**. Adding `?as=IN` simulates a visitor from India.
    A banner shows when this demo override is on, and it changes only the *displayed* price.
+   The explanation under the price appears in Hindi; press **सुनें (Listen)** to hear it, or
+   switch the language. Hearing it needs a voice for that language on the device: Chrome
+   includes Hindi, Portuguese and Spanish voices.
 3. Pay with the PayPal sandbox button, logging in as one of the buyers below.
 
 | Scenario | Open | Log in to PayPal as | Expected result |
@@ -109,6 +118,7 @@ Next.js on Render (App Router + API routes, TypeScript strict)
    ├─ lib/eligibility  decide(): pure function, no I/O, the only place a charge is decided
    ├─ lib/paypal       REST over fetch: orders, authorize, capture, void, verify webhook
    ├─ lib/geo          geoip-lite IP country: display only, never eligibility
+   ├─ lib/checkout/voice  fixed Hindi / Portuguese / Spanish explanations, spoken by the browser
    └─ lib/db           Prisma → Render Postgres (sellers, products, versioned price tables,
                        orders, webhook events, audit log)
 ```

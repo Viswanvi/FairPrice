@@ -24,6 +24,16 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Decisions (newest first)
 
+- Native-language voice help on the buyer page (user request, 2026-11-11, before the Wednesday-night freeze). The plan was approved with Hindi, Portuguese (Brazil) and Spanish, covering both the price and the result. The user also ticked "Something else" without naming a language, so that is still to be asked.
+  - **Sentences:** `lib/checkout/voice.ts` holds fixed, written translations of the page's English copy. There is no AI at runtime.
+  - **Copy rules:** each sentence follows the copy rules, has an exact "not charged" phrase per language, uses no `$` outside English and no formulas, and English is word for word the server message. 108 tests cover this.
+  - **Amounts:** spoken as words ("29 dólares con 70 centavos"). Country names come from `Intl.DisplayNames`.
+  - **Default language:** from the display country (IN → hi, BR/PT → pt-BR, Spanish-speaking countries → es), with a picker to change it.
+  - **UI:** `app/_components/voice.tsx` adds `VoiceProvider`, `PriceVoice` (under the price) and `ResultVoice` (in the result card; it renders nothing on `/checkout/return`, which has no provider). Speech uses the browser's Web Speech API, only on a button press, and reads sentence by sentence. With no voice for the language, it shows a note in that language and the text still shows.
+  - **Data:** `CheckoutResult` gained `shownCents`, so the traveler and review sentences can say the approved amount (test first). Checkout logic is unchanged.
+  - **Checks:** browser-checked at phone width and on desktop, light and dark, with no horizontal scroll. English speech, Stop and the no-Hindi-voice fallback were tried in the in-app browser, which has only English voices. 4 Playwright tests added.
+  - **Still to do:** Hindi (and the other translations) should be read by a native speaker before the video. Result speech was not seen in a browser before deploy, because it needs a PayPal login.
+
 - Phase 14 (user choices: Render free plan; benchmark products seeded with draft tables; commit + push to the public repo `github.com/Viswanvi/FairPrice`; deploy from the user's existing Render account). `render.yaml`:
   - Web `fairprice` only, with `plan: free` and `region: singapore`. `plan` must be explicit: when omitted, Render uses a paid instance.
   - **Reuses the existing database.** The user's existing Render Postgres (free, Singapore, already migrated and seeded) is the hosted database, because a workspace gets only one free Postgres. The first plan, a new database from the Blueprint, was dropped for this reason. The `databases:` block stays in the file, commented out, for a fresh workspace.
@@ -123,6 +133,11 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 
 ## Last session summary
+
+- 2026-11-11 (evening): native-language voice help added (Hindi, Portuguese, Spanish and English; price and result).
+  - **Checks:** 410 unit + 44 DB + 26 Playwright tests pass; typecheck, lint and build pass.
+  - **Live tests passed:** the India purchase (MATCH, $16) and the VPN mismatch (VOIDED, $0, offer $39).
+  - **Next:** deploy, then check the Listen button on the live site with a purchase (result speech). Then Phase 15.
 
 - 2026-11-11: Phase 14 built.
   - Checks: 301 unit + 44 DB + 22 Playwright tests pass; typecheck, lint and build pass (`/api/health` is dynamic).
