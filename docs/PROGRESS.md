@@ -101,7 +101,12 @@ Claude Code updates this file at the end of every task. Keep it short and curren
   - **Audit trail:** create → authorize → decide → capture, each with a `${orderId}:step` request ID.
   - **Webhooks:** 3 events, all verified. The webhook order-ID path `resource.supplementary_data.related_ids.order_id` is **confirmed** (recorded in `docs/SPIKE_RESULTS.md`).
   - Also done: `PAYPAL_WEBHOOK_ID` set in Render (an unsigned POST gets 401) and `APP_BASE_URL` fixed.
-  - Still to run: the VPN mismatch (US buyer on `?as=IN`) and, optionally, the traveler.
+- Phase 14 verify gate, part 2 passed (2026-11-11). VPN mismatch: US buyer on `?as=IN`, PayPal order `91D623706U4570026`.
+  - **Result:** shown IN $16, payer US, eligible $39, MISMATCH, VOIDED, charged $0, offer $39.
+  - **Audit trail:** create → authorize → decide VOID → void (`:void` request ID).
+  - **Webhooks:** 3 verified events, including `PAYMENT.AUTHORIZATION.VOIDED`; each one re-ran finalize, which returned `MISMATCH`.
+  - **Leftover order:** one abandoned checkout (`7VC610678X489814E`, status CREATED, never approved, no money) from opening the PayPal window twice. Harmless.
+  - **Optional, still to run:** paying the $39 re-offer, and the traveler case.
 - Phase 14 risks:
   - **Free web service sleeps** after 15 minutes idle (the first request takes about a minute; the README says so).
   - **Free Postgres expires** 30 days after creation. The existing database was created around 2026-11-10, so check its expiry date in Render against the judging period.
