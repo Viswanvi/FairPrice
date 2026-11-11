@@ -19,10 +19,15 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 | 11 Orders dashboard | Frontend | Built (2026-11-11); verify gate needs Phase 6 | `GET /api/products/:id/orders`, `lib/db/orders.ts`, Orders tab (AG Grid, decision filter with counts, copy buttons, 5 s live refresh). Checked in the browser with temporary orders (deleted). Real sandbox orders come with Phase 6 |
 | 12 Benchmark | AI engine | Done (2026-11-11) | `npm run benchmark` → `data/benchmark-results.json` (committed, real Sonnet 5.5 run, ~$0.40); `GET /api/benchmark`; `/benchmark` page. Verify gate met: US tax guide >20%-off in low-relevance countries formula 34 vs AI 0; avg low-relevance discount 41.8% → 8.5% |
 | 13 Hardening | Backend | Done (2026-11-11) | Rules review: all 10 money-safety rules met (F1 fixed: accepted-offer capture moved into decide() as rule 7). Webhook logic testable + tested; SPEC §6 gaps covered; 21 Playwright tests (seller, buyer desktop+mobile, benchmark) pass. **Feature freeze** |
-| 14 Deploy + README | Demo/QA | Built (2026-11-11); human deploy + webhook + verify gate pending | `render.yaml` (web service, free, Singapore; reuses the existing free Render Postgres), `GET /api/health`, seed adds 5 benchmark products with DRAFT v1, full README. Render start command run locally on the production build: health 200 `{ok:true,db:true}` |
+| 14 Deploy + README | Demo/QA | Done (2026-11-11) | Live at https://fairprice-edof.onrender.com from `main`. `render.yaml` (web service, free, Singapore; reuses the existing free Render Postgres), `GET /api/health`, seed adds 5 benchmark products with DRAFT v1, full README. PayPal webhook registered. Verify gate passed live: India purchase (MATCH $16) and VPN mismatch (VOIDED $0, offer $39), with verified webhooks |
 | 15 Rehearse + submit | Everyone | Not started | |
 
 ## Decisions (newest first)
+
+- **Submission = `main` (tag `submission-safe`, commit `55ab707`), without the voice assistant** (user's decision, 2026-11-11 night).
+  - **What happened:** a voice assistant that guides buyers and sellers in English and Hindi was built and tested on branch `voice-agent` (pushed to GitHub, not merged). Its PROGRESS entry is on that branch.
+  - **Why it's out:** it adds risk and needs a native Hindi review, and Thursday is for the video and Devpost. It can be mentioned as "what's next".
+  - **What stays:** `main` keeps the **Listen** button (Hindi, Portuguese and Spanish explanations of the price and result).
 
 - Native-language voice help on the buyer page (user request, 2026-11-11, before the Wednesday-night freeze). The plan was approved with Hindi, Portuguese (Brazil) and Spanish, covering both the price and the result. The user also ticked "Something else" without naming a language, so that is still to be asked.
   - **Sentences:** `lib/checkout/voice.ts` holds fixed, written translations of the page's English copy. There is no AI at runtime.
@@ -133,6 +138,15 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 
 ## Last session summary
+
+- 2026-11-11 (night): decided to submit `main` as is. The voice assistant stays on branch `voice-agent`. Next, Phase 15:
+  - **Rehearse** the demo.
+  - **Record the video:** under 3 minutes, public on YouTube; mention the voice assistant as "what's next".
+  - **Write the Devpost entry.**
+  - **Judges' access:** fill in the sandbox buyer logins in the README; share the seller password in Devpost only.
+  - **Set the Anthropic spend limit.**
+  - **Final check:** a purchase in a private window on the live URL.
+  - **Submit** before Thu 12 Nov, 12:00 PM PT (1:30 AM Fri IST).
 
 - 2026-11-11 (evening): native-language voice help added (Hindi, Portuguese, Spanish and English; price and result).
   - **Checks:** 410 unit + 44 DB + 26 Playwright tests pass; typecheck, lint and build pass.
