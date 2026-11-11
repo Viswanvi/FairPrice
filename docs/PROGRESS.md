@@ -92,9 +92,9 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 - Phase 14, still to do by a human:
   1. ~~Create the GitHub repo and push~~ (done: `origin` is `https://Viswanvi@github.com/Viswanvi/FairPrice.git`, and pushing uses the Viswanvi GitHub login).
-  2. Render: New → Blueprint, then fill in the `sync: false` values (`DATABASE_URL` = the existing database's Internal URL; `APP_BASE_URL` = the service URL).
+  2. ~~Render Blueprint~~ (done 2026-11-11: live at **https://fairprice-edof.onrender.com**. Checked: `/api/health` 200 `{ok:true,db:true}` after a 46 s free-plan cold start; `/`, `/benchmark` and the draft buyer page load; `/seller` → sign-in). Pending: change `APP_BASE_URL` in Render to `https://fairprice-edof.onrender.com` (it was entered as `https://fairprice.onrender.com`).
   3. Seed: already done, because the hosted database is the one in `.env`. Re-run `npm run db:seed` only if data is missing.
-  4. Register the PayPal webhook (5 events, README step 5), set `PAYPAL_WEBHOOK_ID`, redeploy.
+  4. Register the PayPal webhook at `https://fairprice-edof.onrender.com/api/webhooks/paypal` (5 events, README "Deploy to Render" step 6), set `PAYPAL_WEBHOOK_ID`, redeploy.
   5. Verify gate: in a private window on the live URL, complete an India purchase and a VPN mismatch; the webhook events then appear in `webhook_events`.
 - Phase 14: the webhook order-ID path (`resource.supplementary_data.related_ids.order_id` for payment events) is still unverified. Check the first real events in `webhook_events` and `audit_log` after the verify-gate purchases.
 - Phase 14 risks:
@@ -102,7 +102,8 @@ Claude Code updates this file at the end of every task. Keep it short and curren
   - **Free Postgres expires** 30 days after creation. The existing database was created around 2026-11-10, so check its expiry date in Render against the judging period.
   - **Shared seller password and AI cost.** Judges need the seller password and there is no rate limiting, so anyone with it can run AI analyses. Set a spend limit on the Anthropic key, and share the password in the Devpost submission, not the README.
 - Local `.env` and the hosted site share one database. Local test runs (`test:db`, `test:e2e`) briefly add `itest-`/`e2e-` rows and remove them when they finish, so the live seller list can show test products while tests run. Avoid running tests while recording the demo. Since Phase 14 the database also holds the 5 benchmark DRAFT tables.
-- `npm run build` loads `lib/env`, so it needs every env var. On Render they are set when the Blueprint is created. Locally, `SELLER_DEMO_PASSWORD` is still empty in `.env`; builds were run with a throwaway value in the process env.
+- `npm run build` loads `lib/env`, so it needs every env var. On Render they are set when the Blueprint is created.
+- Seller password: the user chose one (2026-11-11) and typed it into Render themselves. It is also in local `.env`, written as `\$` because Next.js expands `$NAME` in `.env` files. Checked: Next.js and Node's `--env-file` both read the exact value, and `parseServerEnv` passes. Render's dashboard values are not expanded, so they are entered as-is.
 - Seller UI polish: in Formula vs AI, the "high" relevance chip is low-contrast on highlighted rows.
 
 - Product-link fetch: DNS could re-resolve between the check and the fetch (rebinding) — acceptable for the sandbox demo. Sign-in has no rate limit.
@@ -110,7 +111,6 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 - Verify gate met: tax guide avg IN −22% / BR −13% (formula would give −50%, the max); coding course IN −70% / BR −57%.
 - Full 20-run stability check not run yet (≈ $7–8 at the measured ~$0.075/pipeline). Run `npm run ai:stability -- --runs 20` when approved.
 
-- `SELLER_DEMO_PASSWORD` is empty in `.env`, so `lib/env` fails fast locally (blocks `npm run dev`'s seller routes, `npm run db:check` and `npm run build`). Set it (≥ 8 chars) for local demos.
 
 ## Last session summary
 

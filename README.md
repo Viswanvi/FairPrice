@@ -6,7 +6,7 @@ before any money is captured, so a VPN can't unlock another country's price and 
 charged more than the price for their own country. Sellers reach the buyers who could never
 pay a single US price, and every pricing decision is recorded against its PayPal ID.
 
-**Live demo:** `https://<your-service>.onrender.com` _(placeholder: replaced with the Render URL after deploy)_
+**Live demo:** https://fairprice-edof.onrender.com (seller app: [/seller](https://fairprice-edof.onrender.com/seller) · benchmark: [/benchmark](https://fairprice-edof.onrender.com/benchmark))
 · Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/) · PayPal **sandbox only**
 
 > The hosted demo runs on Render's free plan: if nobody has visited for 15 minutes, the first
