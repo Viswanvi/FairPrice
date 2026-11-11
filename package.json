@@ -19,6 +19,7 @@
     "test:e2e": "playwright test --pass-with-no-tests",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "db:setup": "prisma migrate deploy && prisma db seed",
     "data:worldbank": "tsx scripts/fetch-worldbank.ts",
     "ai:stability": "tsx --env-file-if-exists=.env scripts/ai-stability.ts",
     "benchmark": "tsx --env-file-if-exists=.env scripts/run-benchmark.ts",

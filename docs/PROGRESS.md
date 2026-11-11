@@ -19,10 +19,30 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 | 11 Orders dashboard | Frontend | Built (2026-11-11); verify gate needs Phase 6 | `GET /api/products/:id/orders`, `lib/db/orders.ts`, Orders tab (AG Grid, decision filter with counts, copy buttons, 5 s live refresh). Checked in the browser with temporary orders (deleted). Real sandbox orders come with Phase 6 |
 | 12 Benchmark | AI engine | Done (2026-11-11) | `npm run benchmark` → `data/benchmark-results.json` (committed, real Sonnet 5.5 run, ~$0.40); `GET /api/benchmark`; `/benchmark` page. Verify gate met: US tax guide >20%-off in low-relevance countries formula 34 vs AI 0; avg low-relevance discount 41.8% → 8.5% |
 | 13 Hardening | Backend | Done (2026-11-11) | Rules review: all 10 money-safety rules met (F1 fixed: accepted-offer capture moved into decide() as rule 7). Webhook logic testable + tested; SPEC §6 gaps covered; 21 Playwright tests (seller, buyer desktop+mobile, benchmark) pass. **Feature freeze** |
-| 14 Deploy + README | Demo/QA | Not started | |
+| 14 Deploy + README | Demo/QA | Built (2026-11-11); human deploy + webhook + verify gate pending | `render.yaml` (web + Postgres, free, Singapore), `GET /api/health`, seed adds 5 benchmark products with DRAFT v1, full README. Render start command run locally on the production build: health 200 `{ok:true,db:true}` |
 | 15 Rehearse + submit | Everyone | Not started | |
 
 ## Decisions (newest first)
+
+- Phase 14 (user choices: Blueprint creates a NEW database; Render free plan; benchmark products seeded with draft tables; commit + push to a public repo). `render.yaml`:
+  - Web `fairprice` and Postgres `fairprice-db` (v16, same as docker-compose), both `plan: free` and `region: singapore`. `plan` must be explicit: when omitted, Render uses a paid instance.
+  - `DATABASE_URL` comes `fromDatabase` (internal URL).
+  - `SESSION_SECRET` uses `generateValue` (44-char base64).
+  - Secrets use `sync: false`.
+  - Non-secret fixed values are literal: the sandbox `PAYPAL_API_BASE`, `NEXT_PUBLIC_PAYPAL_ENVIRONMENT=sandbox`, `AI_MODEL`, `DEMO_GEO_OVERRIDE=true` and `NODE_VERSION=24`.
+- Phase 14 deviations from the phase prompt's build command:
+  - **Migrations run at start** (`npx prisma migrate deploy && npm start`), not at build. Render's docs don't say whether the build step can reach the private network, but a running free service can. `migrate deploy` is a no-op when nothing is pending.
+  - **`npm ci --include=dev`**, because the build needs the Prisma CLI, Tailwind and TypeScript even if `NODE_ENV=production` is ever set.
+  - Free instances have no Shell or pre-deploy command, so the deployed database is seeded once from a local machine using its External URL (README, "Deploy to Render").
+- Phase 14 health check: `GET /api/health` is `checkHealth()` in `lib/health.ts` with an injected ping (`SELECT 1`) and a 3 s timeout. It returns 200 `{ok:true,db:true}` or 503 `{ok:false,db:false}`, sets `Cache-Control: no-store`, is `force-dynamic` (never prerendered), and logs only the error name. It is also Render's `healthCheckPath`.
+- Phase 14 seed (supersedes the Phase 3 "benchmark products stay in JSON" decision; SPEC §13 asks for them):
+  - `prisma/seed.ts` also creates the 5 benchmark products for `demo-seller`. Each gets its committed AI table as an unapproved **DRAFT v1** via `createDraftTable`, built by `lib/pricing/benchmark-draft.ts`.
+  - The draft is rebuilt to match what the AI route stores: validator rows plus `region`, `formulaPriceCents` and `netCents`.
+  - The formula baseline is recomputed and must equal the committed formula prices, or the seed throws "out of date".
+  - The validator runs on every AI price, and any error throws, so nothing is seeded.
+  - An existing product is never updated, and a table is added only when the product has none, so re-runs are no-ops (checked twice on the dev DB).
+  - Buyers see "not on sale yet" until a seller approves (rule 5).
+- Phase 14 scripts: new `npm run db:setup` (`migrate deploy` + seed) keeps local setup in the README to 5 commands.
 
 - Phase 13: `decide()` rule 7 (user-approved): a VOID whose offer equals the authorized amount returns CAPTURE with reason UNCLEAR/NOT_PAYPAL; Decision CAPTURE reasons widened accordingly; finalizeOrder now captures only on decide() CAPTURE (CLAUDE.md rule 3 holds literally). One own Phase-4 test changed with approval (guest card at standard → capture). Webhook logic moved to `handleWebhookRequest()` in `lib/checkout/webhook.ts` (route is a thin wrapper) and tested: invalid signature → 401 no side effects; duplicate → stored/acted once; no webhook ID → 503; failed handling forgets the event. Playwright: own port 3100 + build folder `.next-e2e` (`NEXT_DIST_DIR`), random per-run seller password in the test server's env only, data seeded/removed by global setup/teardown, no AI or PayPal logins. Not changed (noted): no rate limiting on sign-in or checkout creation; finalize holds a DB connection ≤ 60 s during PayPal calls.
 
@@ -60,7 +80,7 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 - `createDraftTable` / `approveTable` lock the product row (`SELECT … FOR UPDATE`) so versions and approvals serialize; at most one approved version per product. Re-approving the approved version is a no-op; a superseded version can't be re-approved. Hash = sha256 of rows sorted by country with sorted keys (`lib/db/hash.ts`), recomputed on approval.
 - Stored rows are Zod-checked (`lib/db/types.ts`): upper-case ISO code, whole positive cents, unique countries; extra keys allowed. Pricing rules (floors/caps) stay in the Phase 9 validator.
 - `recordWebhookEvent` uses `createMany({ skipDuplicates })` (ON CONFLICT DO NOTHING) so a duplicate never aborts a transaction. Webhook payloads and audit detail are stored through `lib/sanitize.ts` (rule 9). Sanitizer moved there from `scripts/spike/`.
-- Seed uses fixed IDs `demo-seller` / `demo-bootcamp` (buyer page will be `/p/demo-bootcamp`). No price table is seeded (no mock data); benchmark products stay in JSON, not the DB.
+- Seed uses fixed IDs `demo-seller` / `demo-bootcamp` (buyer page `/p/demo-bootcamp`). The demo product gets no price table (the AI generates one, the seller approves it). Benchmark products: see Phase 14.
 - DB integration tests live in `tests/db/` and run only via `npm run test:db` (separate config loads `.env`); every row uses an `itest-<run>` prefix and is deleted afterwards.
 - `decide()` takes `table: { version, rows: { country, priceCents }[] }`. Payer country trimmed + upper-cased; blank or not two letters → UNCLEAR. Invalid cents, a bad table price or a duplicated payer row throw `EligibilityInputError` — finalize must void, never capture, on a throw. ESLint keeps `lib/eligibility/` free of db/paypal/pricing/env/node imports, `fetch`, `process`, `Date`, `Math.random`.
 - Spike request IDs include a per-run ID (PayPal replays the first response for a reused `PayPal-Request-Id`). Spike reads only the PayPal env subset. Approval link rel is `payer-action`; created status `PAYER_ACTION_REQUIRED`.
@@ -69,21 +89,36 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Open issues (newest first)
 
-- `npm run build` loads `lib/env`, so it needs every env var (incl. `SELLER_DEMO_PASSWORD`) — set them in Render before deploying.
-- Seller UI polish: in Formula vs AI, the "high" relevance chip is low-contrast on highlighted rows. The hosted link `/p/:id` 404s until Phase 7.
+- Phase 14, still to do by a human:
+  1. Create an empty public GitHub repo; Claude adds it as `origin` and pushes `main`.
+  2. Render: New → Blueprint, then fill in the `sync: false` values (`APP_BASE_URL` = the service URL).
+  3. Seed once using the External URL.
+  4. Register the PayPal webhook (5 events, README step 5), set `PAYPAL_WEBHOOK_ID`, redeploy.
+  5. Verify gate: in a private window on the live URL, complete an India purchase and a VPN mismatch; the webhook events then appear in `webhook_events`.
+- Phase 14: the webhook order-ID path (`resource.supplementary_data.related_ids.order_id` for payment events) is still unverified. Check the first real events in `webhook_events` and `audit_log` after the verify-gate purchases.
+- Phase 14 risks:
+  - **Free web service sleeps** after 15 minutes idle (the first request takes about a minute; the README says so).
+  - **Free Postgres expires** 30 days after creation.
+  - **Possible second free database.** Render may allow only one free database per workspace: if the Blueprint refuses, delete the old dev database or choose a paid plan.
+  - **Shared seller password and AI cost.** Judges need the seller password and there is no rate limiting, so anyone with it can run AI analyses. Set a spend limit on the Anthropic key, and share the password in the Devpost submission, not the README.
+- Local `.env` still points at the original Render database. That is now the dev/test database, and since Phase 14 it holds the 5 benchmark DRAFT tables.
+- `npm run build` loads `lib/env`, so it needs every env var. On Render they are set when the Blueprint is created. Locally, `SELLER_DEMO_PASSWORD` is still empty in `.env`; builds were run with a throwaway value in the process env.
+- Seller UI polish: in Formula vs AI, the "high" relevance chip is low-contrast on highlighted rows.
 
 - Product-link fetch: DNS could re-resolve between the check and the fetch (rebinding) — acceptable for the sandbox demo. Sign-in has no rate limit.
 - 3-run stability check (2026-11-11, Sonnet 5.5, prompts 2026-11-11.1): 15/15 pipelines ok, schema pass 100%, 0 formula-fallback rows, $1.13. But the AI's FIRST table broke validator rules in 7/15 runs (design templates up to 17 rows, ebook up to 7) — all fixed by the re-ask, at ~+25 s. Error codes aren't recorded yet. Likely improvement: send each country's lowest allowed price (max of min, fee floor, max-discount floor) instead of only minPriceUsd/feeFloorUsd. Latency 22–61 s per pipeline → seller UI needs clear loading states. Tax-guide discounts vary run to run (IN 10–29%).
 - Verify gate met: tax guide avg IN −22% / BR −13% (formula would give −50%, the max); coding course IN −70% / BR −57%.
 - Full 20-run stability check not run yet (≈ $7–8 at the measured ~$0.075/pipeline). Run `npm run ai:stability -- --runs 20` when approved.
 
-- Phase 2 human step: run `npm run spike:paypal -- --label BR-buyer` and `US-buyer` (IN done). Then ask Claude to write `docs/SPIKE_RESULTS.md`.
-- `SELLER_DEMO_PASSWORD` is empty in `.env`, so `lib/env` fails fast (blocks `npm run db:check` and any route importing `lib/env`). Set it (≥ 8 chars).
-- Git repo initialised locally (`main`), nothing committed, no remote yet.
-- Playwright browsers not downloaded yet: run `npx playwright install chromium` before Phase 13.
+- `SELLER_DEMO_PASSWORD` is empty in `.env`, so `lib/env` fails fast locally (blocks `npm run dev`'s seller routes, `npm run db:check` and `npm run build`). Set it (≥ 8 chars) for local demos.
 
 ## Last session summary
 
+- 2026-11-11: Phase 14 built.
+  - Checks: 301 unit + 44 DB + 22 Playwright tests pass; typecheck, lint and build pass (`/api/health` is dynamic).
+  - Render's start command was run locally on the production build: health 200, `/benchmark` 200, draft product "not on sale yet", `/seller` → sign-in.
+  - Git: commit `bd81db5` holds Phases 1–13; Phase 14 is committed separately; no remote yet.
+  - Next: the human steps under Open issues, then Phase 15.
 - 2026-11-11: Phase 13 done. 287 unit + 44 DB + 21 Playwright tests pass; typecheck, lint, build pass. Feature freeze: bug fixes only from here. Next: Phase 14 (render.yaml, /api/health, README, first commit + GitHub remote, Render deploy, webhook). Human: sandbox purchases (Phases 6/7 verify).
 - 2026-11-11: Phase 12 done (283 unit tests, typecheck, lint, build pass; /benchmark browser-checked desktop + phone/dark). Remaining: human sandbox purchases (Phases 6/7 verify), Phase 13 (hardening), 14 (deploy + README), 15 (rehearse + submit). Nothing committed yet.
 - 2026-11-11: Phase 7 built. 278 unit tests, typecheck, lint, build pass. Human verify (with Phase 6's): set SELLER_DEMO_PASSWORD → `npm run dev` → approve a table for demo-bootcamp in /seller → open `/p/demo-bootcamp?as=IN` on a phone-size window → buy as the India sandbox buyer (expect PAID) and as the US buyer (expect MISMATCH + "Pay $99"); `npm run e2e:sandbox` covers the traveler. Next: Phase 12 (benchmark), 13 (hardening), 14 (deploy).

@@ -1,16 +1,25 @@
 /**
- * Seed the demo seller and demo product. Safe to run repeatedly (upserts with fixed IDs).
- * Run with `npm run db:seed` (Prisma loads DATABASE_URL from .env).
+ * Seed the demo seller, the demo product and the five benchmark products. Safe to run
+ * repeatedly: fixed IDs, upserts, and a benchmark product only gets a table if it has none.
  *
- * No price table is seeded: the AI generates one and the seller approves it (Phase 9/10).
- * Benchmark products live in data/benchmark-products.json and are read from there.
+ *   Local:    npm run db:seed            (Prisma loads DATABASE_URL from .env)
+ *   Deployed: run once from your machine with DATABASE_URL set to the Render database's
+ *             External URL — see README "Deploy to Render".
+ *
+ * The demo product gets no price table: the AI generates one and the seller approves it.
+ * Each benchmark product gets its committed AI table (data/benchmark-results.json) as an
+ * unapproved DRAFT version 1, checked by the validator first. Nothing seeded here reaches
+ * checkout until a seller approves it (CLAUDE.md rule 5).
  */
-import { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import benchmarkJson from "../data/benchmark-results.json";
+import { prisma } from "../lib/db/client";
 import { DEMO_PRODUCT_ID, DEMO_SELLER_ID } from "../lib/db/demo";
+import { createDraftTable } from "../lib/db/price-tables";
+import { benchmarkFileSchema } from "../lib/pricing/benchmark";
+import { benchmarkDraft } from "../lib/pricing/benchmark-draft";
 
-const prisma = new PrismaClient();
-
-async function main(): Promise<void> {
+async function seedDemo(): Promise<void> {
   const seller = await prisma.seller.upsert({
     where: { id: DEMO_SELLER_ID },
     update: { name: "Demo Seller" },
@@ -41,9 +50,48 @@ async function main(): Promise<void> {
   console.log(`Seeded product "${product.title}" (${product.id}): base ${product.baseCents} cents`);
 }
 
+async function seedBenchmarkProducts(): Promise<void> {
+  const benchmark = benchmarkFileSchema.parse(benchmarkJson);
+  for (const p of benchmark.products) {
+    const draft = benchmarkDraft(p); // throws on stale or rule-breaking data: nothing is written
+
+    // An existing product is left exactly as the seller has it.
+    await prisma.product.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        id: p.id,
+        sellerId: DEMO_SELLER_ID,
+        title: p.title,
+        sourceUrl: null,
+        description: p.description,
+        baseCents: p.baseCents,
+        minCents: p.minCents,
+        maxDiscountPct: p.maxDiscountPct,
+        goal: p.goal,
+        requirePaypal: true,
+        audienceProfile: draft.audienceProfile as Prisma.InputJsonValue,
+      },
+    });
+
+    const existing = await prisma.priceTable.count({ where: { productId: p.id } });
+    if (existing > 0) {
+      console.log(`Benchmark product ${p.id}: already has a price table, left as is`);
+      continue;
+    }
+    const table = await createDraftTable({ productId: p.id, rows: draft.rows, formulaRows: draft.formulaRows });
+    console.log(`Benchmark product ${p.id}: DRAFT version ${table.version} with ${draft.rows.length} countries`);
+  }
+}
+
+async function main(): Promise<void> {
+  await seedDemo();
+  await seedBenchmarkProducts();
+}
+
 main()
   .catch((error: unknown) => {
-    console.error("Seed failed:", error instanceof Error ? error.message : error);
+    console.error("Seed failed:", error instanceof Error ? `${error.name}: ${error.message}` : error);
     process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());

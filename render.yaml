@@ -1,0 +1,76 @@
+# Render Blueprint: one web service and one Render Postgres database, both in Singapore so
+# the app reaches the database over Render's private network (docs/SPEC.md section 13).
+# Deploy: Render dashboard > New > Blueprint > pick this repo. Render asks for every
+# `sync: false` value once, when the Blueprint is created; change them later under the
+# service's Environment tab. No secret is written in this file.
+# Full steps (seed, PayPal webhook): README.md, "Deploy to Render".
+
+services:
+  - type: web
+    name: fairprice
+    runtime: node
+    plan: free # sleeps after 15 minutes idle; the first request then takes about a minute
+    region: singapore
+    branch: main
+    autoDeployTrigger: commit
+    # --include=dev: the build needs the Prisma CLI, Tailwind and TypeScript (dev
+    # dependencies) even if NODE_ENV=production is ever set. postinstall prepares the
+    # country-only geoip data.
+    buildCommand: npm ci --include=dev && npm run build
+    # Migrations run at start, where the private database URL is known to be reachable;
+    # `migrate deploy` only applies pending migrations, so it is a no-op on most starts.
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+
+      # PayPal sandbox (developer.paypal.com > Apps & Credentials). Sandbox only: the app
+      # refuses to start with any other API base (lib/env-schema.ts).
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID # leave empty on the first deploy; set after creating the webhook
+        sync: false
+      - key: PAYPAL_API_BASE
+        value: https://api-m.sandbox.paypal.com
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID # same value as PAYPAL_CLIENT_ID; read at build time
+        sync: false
+      - key: NEXT_PUBLIC_PAYPAL_ENVIRONMENT
+        value: sandbox
+
+      # This service's public URL, e.g. https://fairprice.onrender.com (PayPal return URLs).
+      - key: APP_BASE_URL
+        sync: false
+
+      # AI for audience analysis and pricing.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-sonnet-5-5
+
+      # Internal (private network) URL of the database below.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fairprice-db
+          property: connectionString
+
+      # Seller sign-in for the demo. Render generates a random 256-bit session secret.
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SELLER_DEMO_PASSWORD # at least 8 characters; share it with judges privately
+        sync: false
+
+      # Demo only: ?as=IN simulates the visitor's IP country for the DISPLAYED price, with a
+      # visible banner. Eligibility always uses the PayPal payer country.
+      - key: DEMO_GEO_OVERRIDE
+        value: "true"
+
+databases:
+  - name: fairprice-db
+    plan: free # Render's free Postgres expires 30 days after creation
+    region: singapore
+    databaseName: fairprice
+    user: fairprice
+    postgresMajorVersion: "16" # same as docker-compose.yml
