@@ -27,8 +27,6 @@ version**, then **Approve version 2** on camera. The buyer scenes then use versi
       appear only as dots.
 - [ ] **Hide notifications,** and zoom the browser to 110–125% so text is readable.
 - [ ] **Have the sandbox buyer logins ready** for India and the US.
-- [ ] **Clean seller list:** remove leftover test products (for example "QcraQue") before
-      recording.
 
 ---
 
