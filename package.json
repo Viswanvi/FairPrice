@@ -1,0 +1,65 @@
+{
+  "name": "fairprice",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "node scripts/prepare-geoip.mjs",
+    "dev": "node scripts/prepare-geoip.mjs && next dev",
+    "build": "node scripts/prepare-geoip.mjs && prisma generate && next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:db": "vitest run --config vitest.db.config.mts",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "data:worldbank": "tsx scripts/fetch-worldbank.ts",
+    "ai:stability": "tsx --env-file-if-exists=.env scripts/ai-stability.ts",
+    "benchmark": "tsx --env-file-if-exists=.env scripts/run-benchmark.ts",
+    "db:check": "tsx --env-file-if-exists=.env scripts/db-check.ts",
+    "spike:paypal": "tsx --env-file-if-exists=.env scripts/spike-paypal.ts",
+    "e2e:sandbox": "tsx --env-file-if-exists=.env scripts/e2e-sandbox.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@paypal/react-paypal-js": "^10.6.1",
+    "@prisma/client": "^6.19.3",
+    "ag-grid-community": "^36.3.0",
+    "ag-grid-react": "^36.3.0",
+    "geoip-lite": "^2.0.3",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "prisma": "^6.19.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "prisma@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true
+  }
+}

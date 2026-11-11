@@ -1,0 +1,43 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
+
+# next.js
+/.next/
+/.next-e2e/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files: never commit secrets. Only .env.example is tracked.
+.env*
+!.env.example
+
+# PayPal spike output (sanitized, but kept out of the repo)
+scripts/spike-output/
+
+# geoip-lite country data copied from node_modules (scripts/prepare-geoip.mjs)
+/.geoip/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

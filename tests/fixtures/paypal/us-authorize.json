@@ -1,0 +1,97 @@
+{
+  "id": "16R92021PS4468108",
+  "intent": "AUTHORIZE",
+  "status": "COMPLETED",
+  "payment_source": {
+    "paypal": {
+      "email_address": "[redacted]",
+      "account_id": "FL6N9FNJMEGJQ",
+      "account_status": "VERIFIED",
+      "name": "[redacted]",
+      "address": {
+        "country_code": "US"
+      }
+    }
+  },
+  "purchase_units": [
+    {
+      "reference_id": "default",
+      "amount": {
+        "currency_code": "USD",
+        "value": "99.00"
+      },
+      "payee": {
+        "email_address": "[redacted]",
+        "merchant_id": "AQMG7ZUC9B4MJ"
+      },
+      "custom_id": "spike-A-US-buyer",
+      "payments": {
+        "authorizations": [
+          {
+            "status": "CREATED",
+            "id": "3XM3527360466542J",
+            "amount": {
+              "currency_code": "USD",
+              "value": "99.00"
+            },
+            "custom_id": "spike-A-US-buyer",
+            "seller_protection": {
+              "status": "ELIGIBLE",
+              "dispute_categories": [
+                "ITEM_NOT_RECEIVED",
+                "UNAUTHORIZED_TRANSACTION"
+              ]
+            },
+            "expiration_time": "2026-12-10T06:51:24Z",
+            "links": [
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/3XM3527360466542J",
+                "rel": "self",
+                "method": "GET"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/3XM3527360466542J/capture",
+                "rel": "capture",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/3XM3527360466542J/void",
+                "rel": "void",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/3XM3527360466542J/reauthorize",
+                "rel": "reauthorize",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/checkout/orders/16R92021PS4468108",
+                "rel": "up",
+                "method": "GET"
+              }
+            ],
+            "create_time": "2026-11-11T06:51:24Z",
+            "update_time": "2026-11-11T06:51:24Z"
+          }
+        ]
+      }
+    }
+  ],
+  "payer": {
+    "name": "[redacted]",
+    "email_address": "[redacted]",
+    "payer_id": "FL6N9FNJMEGJQ",
+    "address": {
+      "country_code": "US"
+    }
+  },
+  "create_time": "2026-11-11T06:47:42Z",
+  "update_time": "2026-11-11T06:51:24Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/16R92021PS4468108",
+      "rel": "self",
+      "method": "GET"
+    }
+  ]
+}

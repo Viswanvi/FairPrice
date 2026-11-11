@@ -1,0 +1,55 @@
+{
+  "note": "These five products are invented for the FairPrice demo and the formula-versus-AI benchmark. They are not real products, and no real sales data exists for them. Prices are in integer US cents.",
+  "products": [
+    {
+      "id": "bench-coding-course",
+      "kind": "coding course",
+      "title": "Full-Stack TypeScript: Build and Ship Five Real Apps",
+      "description": "A self-paced video course that takes you from basic JavaScript to shipping production web apps with TypeScript, React and Node.js. Over 42 hours of lessons you build five complete projects: a budgeting tool, a real-time chat, a job board with search, a REST and GraphQL API, and a small SaaS with payments and sign-in. Every lesson includes downloadable starter code, exercises and a finished solution. Subtitles are available in English, Spanish and Portuguese. The course suits self-taught developers, bootcamp graduates and students preparing for their first developer job anywhere in the world. Lifetime access and all future updates are included.",
+      "baseCents": 8900,
+      "minCents": 1500,
+      "maxDiscountPct": 70,
+      "goal": "reach"
+    },
+    {
+      "id": "bench-us-tax-guide",
+      "kind": "US tax-preparation guide",
+      "title": "The 2026 US Federal Tax Return Workbook for Freelancers",
+      "description": "A step-by-step workbook for US-based freelancers and sole proprietors filing their 2026 federal income tax return. It walks through Form 1040, Schedule C for self-employment income, Schedule SE for self-employment tax, quarterly estimated payments, the home office deduction and the qualified business income deduction. Each chapter has worked examples with real numbers, a checklist of IRS documents to gather, and fill-in worksheets you can print. It explains common audit triggers and record-keeping rules in plain English. The guide applies only to US federal tax law and to taxpayers who file with the Internal Revenue Service; it does not cover state returns or the tax systems of other countries.",
+      "baseCents": 4900,
+      "minCents": 1500,
+      "maxDiscountPct": 50,
+      "goal": "revenue"
+    },
+    {
+      "id": "bench-design-templates",
+      "kind": "design template pack",
+      "title": "Grid & Grain: 120 Figma UI Templates for Startups",
+      "description": "A pack of 120 professionally designed Figma templates for landing pages, dashboards, onboarding flows, pricing pages and mobile app screens. Every template uses auto layout, shared colour and type styles, and a component library with light and dark variants, so you can restyle a whole project in minutes. The files are organised by page type and include a quick-start guide. Placeholder text is in English, but the layouts work for any language, including right-to-left scripts. The pack suits freelance designers, indie founders and small product teams. The licence allows unlimited commercial projects for one designer, although the files themselves are easy to copy once downloaded.",
+      "baseCents": 3900,
+      "minCents": 900,
+      "maxDiscountPct": 60,
+      "goal": "reach"
+    },
+    {
+      "id": "bench-ebook",
+      "kind": "English-language ebook",
+      "title": "Quiet Focus: A Practical Guide to Deep Work at Home",
+      "description": "An English-language ebook of about 220 pages on building a focused, sustainable remote-work routine. It covers planning your week, protecting blocks of deep work, handling messages without constant interruptions, setting up a small home workspace and recovering from burnout. Each chapter ends with a short exercise and a one-page summary. The examples come from software developers, writers, designers and students in many countries, and the advice does not depend on any particular job or location. The book is delivered as PDF and EPUB files without copy protection, readable on any phone, tablet, e-reader or computer. It is written in clear, simple English that suits non-native readers.",
+      "baseCents": 1900,
+      "minCents": 400,
+      "maxDiscountPct": 60,
+      "goal": "reach"
+    },
+    {
+      "id": "bench-software-license",
+      "kind": "software license",
+      "title": "Clipwright Pro: Screen Recorder and Annotator, Lifetime Licence",
+      "description": "Clipwright Pro is a desktop app for Windows and macOS that records your screen, webcam and microphone, then lets you trim clips, add arrows and captions, blur sensitive details and export to MP4 or GIF. People use it for bug reports, product demos, tutorials and online teaching. A lifetime licence activates on up to two computers and includes all version 3 updates. The interface is available in English, Spanish, Portuguese, Hindi and Indonesian. Licence keys are checked online at activation, which limits casual sharing between users. There are no subscriptions or watermarks, and a free trial lets buyers test every feature for fourteen days before paying.",
+      "baseCents": 5900,
+      "minCents": 1500,
+      "maxDiscountPct": 60,
+      "goal": "revenue"
+    }
+  ]
+}

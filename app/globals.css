@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+/*
+ * FairPrice design tokens. One accent colour (teal — deliberately not PayPal blue, so
+ * nothing imitates PayPal's branding), neutral surfaces, light and dark mode.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f7;
+  --surface: #ffffff;
+  --surface-2: #f0f2f2;
+  --line: #e1e5e5;
+  --line-strong: #c9d0d0;
+  --ink: #13191b;
+  --ink-2: #56626a;
+  --ink-3: #8a959b;
+  --accent: #0f766e;
+  --accent-strong: #0a5c55;
+  --accent-soft: #e3f3f1;
+  --accent-ink: #ffffff;
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+  --warn: #9a5b0b;
+  --warn-soft: #fcf2e1;
+  --ok: #17663f;
+  --ok-soft: #e4f4ea;
+  --shadow: 0 1px 2px rgb(16 24 28 / 0.05), 0 1px 1px rgb(16 24 28 / 0.03);
+  /* Chart series (validated with the dataviz palette checker: CVD ΔE ≥ 10, contrast ≥ 3:1). */
+  --series-formula: #eb6834;
+  --series-ai: #0d9488;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0c1011;
+    --surface: #141a1c;
+    --surface-2: #1b2224;
+    --line: #273032;
+    --line-strong: #364244;
+    --ink: #e6eced;
+    --ink-2: #a3b0b4;
+    --ink-3: #75838a;
+    --accent: #2cc9b5;
+    --accent-strong: #5fdccb;
+    --accent-soft: #10302c;
+    --accent-ink: #04201c;
+    --danger: #ff8a7f;
+    --danger-soft: #3a1714;
+    --warn: #f0b45c;
+    --warn-soft: #33250f;
+    --ok: #6fd69c;
+    --ok-soft: #12301f;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+    --series-formula: #d95926;
+    --series-ai: #1a9e8f;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow);
+  --color-series-formula: var(--series-formula);
+  --color-series-ai: var(--series-ai);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* ---------- AG Grid: row and cell states used by the price grid ---------- */
+.fp-grid .ag-row.row-fallback {
+  background-color: var(--warn-soft);
+}
+.fp-grid .ag-row.row-warning {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+.fp-grid .ag-row.row-top-diff {
+  background-color: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.fp-grid .ag-row.row-new {
+  animation: fp-row-new 4s ease-out;
+}
+@keyframes fp-row-new {
+  from {
+    background-color: var(--accent-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.fp-grid .ag-cell.cell-invalid {
+  background-color: var(--danger-soft);
+  box-shadow: inset 0 0 0 1px var(--danger);
+  color: var(--danger);
+}
+.fp-grid .ag-cell.cell-editable {
+  cursor: text;
+}
+.fp-grid .ag-cell.cell-editable::after {
+  content: "";
+  position: absolute;
+  inset: 6px 4px 6px auto;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.35;
+}

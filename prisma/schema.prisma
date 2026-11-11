@@ -1,0 +1,158 @@
+// FairPrice data model (docs/SPEC.md section 8).
+// All money is integer cents. Table and column names are snake_case to match the SPEC SQL,
+// so raw queries (e.g. SELECT ... FOR UPDATE in finalizeOrder) read naturally.
+// DATABASE_URL may point at local Docker Postgres or a Render Postgres external URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Goal {
+  revenue
+  reach
+}
+
+enum PriceTableStatus {
+  draft
+  approved
+  superseded
+}
+
+enum OrderDecision {
+  MATCH
+  TRAVELER
+  MISMATCH
+  UNCLEAR
+  NOT_PAYPAL
+}
+
+enum OrderStatus {
+  CREATED // our row exists; PayPal order created / awaiting buyer approval
+  AUTHORIZED // PayPal authorization succeeded; decision pending
+  CAPTURED // captured the eligible amount (MATCH or TRAVELER)
+  VOIDED // authorization voided; buyer not charged (MISMATCH, UNCLEAR, NOT_PAYPAL)
+  DECLINED // authorization was not approved; no decision ran
+  NEEDS_REVIEW // capture failed after retries
+}
+
+model Seller {
+  id        String    @id @default(cuid())
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  products  Product[]
+
+  @@map("sellers")
+}
+
+model Product {
+  id              String       @id @default(cuid())
+  sellerId        String       @map("seller_id")
+  seller          Seller       @relation(fields: [sellerId], references: [id])
+  title           String
+  sourceUrl       String?      @map("source_url")
+  description     String?
+  baseCents       Int          @map("base_cents")
+  minCents        Int          @map("min_cents")
+  maxDiscountPct  Int          @map("max_discount_pct")
+  goal            Goal
+  requirePaypal   Boolean      @default(true) @map("require_paypal")
+  /// Output of AI call 1 (audience analysis).
+  audienceProfile Json?        @map("audience_profile")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  priceTables     PriceTable[]
+  orders          Order[]
+
+  @@index([sellerId])
+  @@map("products")
+}
+
+model PriceTable {
+  id          String           @id @default(cuid())
+  productId   String           @map("product_id")
+  product     Product          @relation(fields: [productId], references: [id])
+  version     Int
+  status      PriceTableStatus @default(draft)
+  /// country, priceCents, discountPct, relevance, reason, flags
+  rows        Json
+  /// Formula baseline for the side-by-side view.
+  formulaRows Json             @map("formula_rows")
+  /// sha256 of the canonical rows; recomputed on approval; shown on orders.
+  contentHash String           @map("content_hash")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  approvedAt  DateTime?        @map("approved_at")
+  orders      Order[]
+
+  @@unique([productId, version])
+  @@index([productId, status])
+  @@map("price_tables")
+}
+
+model Order {
+  id              String         @id @default(cuid())
+  productId       String         @map("product_id")
+  product         Product        @relation(fields: [productId], references: [id])
+  /// The exact approved table version that priced this order.
+  priceTableId    String         @map("price_table_id")
+  priceTable      PriceTable     @relation(fields: [priceTableId], references: [id])
+  paypalOrderId   String?        @unique @map("paypal_order_id")
+  authorizationId String?        @map("authorization_id")
+  captureId       String?        @map("capture_id")
+  /// Display country from the IP (or demo override). Never used for eligibility.
+  shownCountry    String?        @map("shown_country")
+  /// The authorized amount.
+  shownCents      Int            @map("shown_cents")
+  /// From PayPal (payer.address.country_code).
+  payerCountry    String?        @map("payer_country")
+  /// payment_source type from PayPal, e.g. "paypal" or "card".
+  paymentType     String?        @map("payment_type")
+  eligibleCents   Int?           @map("eligible_cents")
+  /// What PayPal confirmed as captured (0 or null when voided).
+  chargedCents    Int?           @map("charged_cents")
+  /// Set on VOID: the price re-offered to the buyer. The re-offer endpoint reads it from here.
+  offerCents      Int?           @map("offer_cents")
+  decision        OrderDecision?
+  status          OrderStatus    @default(CREATED)
+  /// A re-offer order points at the voided order it replaces.
+  previousOrderId String?        @map("previous_order_id")
+  previousOrder   Order?         @relation("Reoffer", fields: [previousOrderId], references: [id])
+  reoffers        Order[]        @relation("Reoffer")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([productId, createdAt])
+  @@map("orders")
+}
+
+model WebhookEvent {
+  /// PayPal event ID; duplicates are ignored.
+  eventId    String   @id @map("event_id")
+  eventType  String   @map("event_type")
+  resourceId String?  @map("resource_id")
+  verified   Boolean
+  /// Stored sanitized: no names, emails or street addresses.
+  payload    Json
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  @@map("webhook_events")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  orderId   String?  @map("order_id")
+  /// create, authorize, decide, capture, void, webhook
+  step      String
+  /// PayPal-Request-Id used, if any.
+  requestId String?  @map("request_id")
+  outcome   String
+  /// Stored sanitized.
+  detail    Json?
+  at        DateTime @default(now())
+
+  @@index([orderId])
+  @@map("audit_log")
+}

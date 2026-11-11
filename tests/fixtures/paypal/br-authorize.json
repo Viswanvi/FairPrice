@@ -1,0 +1,99 @@
+{
+  "id": "79413830GT318081H",
+  "intent": "AUTHORIZE",
+  "status": "COMPLETED",
+  "payment_source": {
+    "paypal": {
+      "email_address": "[redacted]",
+      "account_id": "KLX47DT26KN68",
+      "account_status": "VERIFIED",
+      "name": "[redacted]",
+      "tax_info": "[redacted]",
+      "address": {
+        "country_code": "BR"
+      }
+    }
+  },
+  "purchase_units": [
+    {
+      "reference_id": "default",
+      "amount": {
+        "currency_code": "USD",
+        "value": "99.00"
+      },
+      "payee": {
+        "email_address": "[redacted]",
+        "merchant_id": "AQMG7ZUC9B4MJ"
+      },
+      "custom_id": "spike-A-BR-buyer",
+      "soft_descriptor": "PAYPAL *TEST STORE",
+      "payments": {
+        "authorizations": [
+          {
+            "status": "CREATED",
+            "id": "79K05075N0530033J",
+            "amount": {
+              "currency_code": "USD",
+              "value": "99.00"
+            },
+            "custom_id": "spike-A-BR-buyer",
+            "seller_protection": {
+              "status": "ELIGIBLE",
+              "dispute_categories": [
+                "ITEM_NOT_RECEIVED",
+                "UNAUTHORIZED_TRANSACTION"
+              ]
+            },
+            "expiration_time": "2026-12-10T06:47:03Z",
+            "links": [
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/79K05075N0530033J",
+                "rel": "self",
+                "method": "GET"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/79K05075N0530033J/capture",
+                "rel": "capture",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/79K05075N0530033J/void",
+                "rel": "void",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/79K05075N0530033J/reauthorize",
+                "rel": "reauthorize",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/checkout/orders/79413830GT318081H",
+                "rel": "up",
+                "method": "GET"
+              }
+            ],
+            "create_time": "2026-11-11T06:47:03Z",
+            "update_time": "2026-11-11T06:47:03Z"
+          }
+        ]
+      }
+    }
+  ],
+  "payer": {
+    "name": "[redacted]",
+    "email_address": "[redacted]",
+    "payer_id": "KLX47DT26KN68",
+    "address": {
+      "country_code": "BR"
+    }
+  },
+  "create_time": "2026-11-11T06:46:00Z",
+  "update_time": "2026-11-11T06:47:03Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/79413830GT318081H",
+      "rel": "self",
+      "method": "GET"
+    }
+  ]
+}

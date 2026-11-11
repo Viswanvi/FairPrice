@@ -1,0 +1,7 @@
+{
+  "percent": 0.0349,
+  "fixedUsd": 0.49,
+  "intlPercent": 0.015,
+  "maxFeeShare": 0.15,
+  "note": "Merchant PayPal account in the United States, PayPal Checkout. percent and intlPercent are fractions (0.0349 = 3.49%); fixedUsd is the fixed fee per transaction in US dollars; maxFeeShare is the highest share of a sale we accept losing to fees. These values are illustrative: confirm current rates on the PayPal merchant fees page (paypal.com/us/business/paypal-business-fees) before relying on them. Fee floor = fixedUsd / (maxFeeShare - percent - intlPercent)."
+}

@@ -1,0 +1,23 @@
+# Optional local Postgres. Start with: docker compose up -d db
+# Matches the default DATABASE_URL in .env.example:
+#   postgresql://fairprice:fairprice@localhost:5432/fairprice
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fairprice
+      POSTGRES_PASSWORD: fairprice
+      POSTGRES_DB: fairprice
+    ports:
+      - "5432:5432"
+    volumes:
+      - fairprice-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fairprice -d fairprice"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  fairprice-db:

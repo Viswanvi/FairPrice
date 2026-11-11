@@ -1,0 +1,25 @@
+{
+  "id": "34512945CR111482J",
+  "status": "VOIDED",
+  "amount": {
+    "currency_code": "USD",
+    "value": "99.00"
+  },
+  "seller_protection": {
+    "status": "ELIGIBLE",
+    "dispute_categories": [
+      "ITEM_NOT_RECEIVED",
+      "UNAUTHORIZED_TRANSACTION"
+    ]
+  },
+  "expiration_time": "2026-12-09T22:52:03-08:00",
+  "create_time": "2026-11-10T22:52:03-08:00",
+  "update_time": "2026-11-10T22:52:05-08:00",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/34512945CR111482J",
+      "rel": "self",
+      "method": "GET"
+    }
+  ]
+}

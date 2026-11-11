@@ -1,0 +1,48 @@
+import { expect, test } from "@playwright/test";
+import { E2E } from "./fixtures";
+
+// Runs on desktop and on a phone viewport (playwright.config.ts). PayPal approval stays manual.
+
+test("India visitor sees the fair price, the demo banner and the PayPal button", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}?as=IN`);
+  await expect(page.getByRole("heading", { name: "E2E buyer course" })).toBeVisible();
+  await expect(page.getByText("Demo: simulating a visitor from India.")).toBeVisible();
+  await expect(page.getByText("$35", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fair price for India, verified by PayPal at checkout")).toBeVisible();
+  await expect(page.getByText(/^Standard price \$99$/)).toBeVisible();
+  // The official button loads from PayPal's sandbox (needs internet).
+  await expect(page.locator("paypal-button")).toBeVisible({ timeout: 30_000 });
+  // No horizontal scrolling on any viewport.
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("US visitor sees the US price with 'the'", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}?as=US`);
+  await expect(page.getByText("Fair price for the United States, verified by PayPal at checkout")).toBeVisible();
+  await expect(page.getByText("$99", { exact: true })).toBeVisible();
+});
+
+test("a country outside the table pays the standard price, not called 'fair'", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}?as=FR`);
+  await expect(page.getByText("Price for France", { exact: true })).toBeVisible();
+  await expect(page.getByText("$99", { exact: true })).toBeVisible();
+});
+
+test("without an override or a known IP, the standard price is shown and no banner", async ({ page }) => {
+  await page.goto(`/p/${E2E.buyerProduct}`);
+  await expect(page.getByText("Standard price. PayPal confirms your country at checkout.")).toBeVisible();
+  await expect(page.getByText(/Demo: simulating/)).toHaveCount(0);
+});
+
+test("an unpublished product isn't on sale, and an unknown one is a 404", async ({ page }) => {
+  await page.goto(`/p/${E2E.unpublishedProduct}`);
+  await expect(page.getByText("This product isn't on sale yet. Please check back soon.")).toBeVisible();
+  const res = await page.goto("/p/e2e-does-not-exist");
+  expect(res?.status()).toBe(404);
+});
+
+test("the checkout API rejects a request that tries to set a price", async ({ request }) => {
+  const res = await request.post("/api/checkout/orders?as=IN", { data: { productId: E2E.buyerProduct, amount: 1 } });
+  expect(res.status()).toBe(400);
+});

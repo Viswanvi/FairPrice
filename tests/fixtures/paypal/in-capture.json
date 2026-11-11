@@ -1,0 +1,51 @@
+{
+  "id": "59H5647351774643T",
+  "amount": {
+    "currency_code": "USD",
+    "value": "35.00"
+  },
+  "final_capture": true,
+  "seller_protection": {
+    "status": "ELIGIBLE",
+    "dispute_categories": [
+      "ITEM_NOT_RECEIVED",
+      "UNAUTHORIZED_TRANSACTION"
+    ]
+  },
+  "seller_receivable_breakdown": {
+    "gross_amount": {
+      "currency_code": "USD",
+      "value": "35.00"
+    },
+    "paypal_fee": {
+      "currency_code": "USD",
+      "value": "2.24"
+    },
+    "net_amount": {
+      "currency_code": "USD",
+      "value": "32.76"
+    },
+    "exchange_rate": {}
+  },
+  "custom_id": "spike-A-IN-buyer",
+  "status": "COMPLETED",
+  "create_time": "2026-11-11T05:33:38Z",
+  "update_time": "2026-11-11T05:33:38Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/payments/captures/59H5647351774643T",
+      "rel": "self",
+      "method": "GET"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/payments/captures/59H5647351774643T/refund",
+      "rel": "refund",
+      "method": "POST"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/8B240477UW5403026",
+      "rel": "up",
+      "method": "GET"
+    }
+  ]
+}

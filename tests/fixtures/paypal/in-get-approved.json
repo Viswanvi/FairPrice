@@ -1,0 +1,57 @@
+{
+  "id": "1E49030044424212B",
+  "intent": "AUTHORIZE",
+  "status": "APPROVED",
+  "payment_source": {
+    "paypal": {
+      "email_address": "[redacted]",
+      "account_id": "4BNWU5MMYLE36",
+      "account_status": "VERIFIED",
+      "name": "[redacted]",
+      "address": {
+        "country_code": "IN"
+      }
+    }
+  },
+  "purchase_units": [
+    {
+      "reference_id": "default",
+      "amount": {
+        "currency_code": "USD",
+        "value": "99.00",
+        "breakdown": {}
+      },
+      "payee": {
+        "email_address": "[redacted]",
+        "merchant_id": "AQMG7ZUC9B4MJ"
+      },
+      "custom_id": "spike-A-IN-buyer"
+    }
+  ],
+  "payer": {
+    "name": "[redacted]",
+    "email_address": "[redacted]",
+    "payer_id": "4BNWU5MMYLE36",
+    "address": {
+      "country_code": "IN"
+    }
+  },
+  "create_time": "2026-11-11T05:28:50Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/1E49030044424212B",
+      "rel": "self",
+      "method": "GET"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/1E49030044424212B",
+      "rel": "update",
+      "method": "PATCH"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/1E49030044424212B/authorize",
+      "rel": "authorize",
+      "method": "POST"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "note": "Demo target countries: large internet markets across every region. The AI prices these individually; the formula covers all other countries. region uses the same ten regions as the audience-analysis prompt. Russia is excluded because PayPal suspended service there in 2022; Taiwan is excluded because World Bank data doesn't cover it.",
+  "regions": [
+    "North America",
+    "Latin America",
+    "Western Europe",
+    "Eastern Europe",
+    "Middle East and North Africa",
+    "Sub-Saharan Africa",
+    "South Asia",
+    "Southeast Asia",
+    "East Asia",
+    "Oceania"
+  ],
+  "countries": [
+    { "code": "US", "region": "North America" },
+    { "code": "CA", "region": "North America" },
+
+    { "code": "MX", "region": "Latin America" },
+    { "code": "BR", "region": "Latin America" },
+    { "code": "AR", "region": "Latin America" },
+    { "code": "CO", "region": "Latin America" },
+    { "code": "CL", "region": "Latin America" },
+    { "code": "PE", "region": "Latin America" },
+
+    { "code": "GB", "region": "Western Europe" },
+    { "code": "DE", "region": "Western Europe" },
+    { "code": "FR", "region": "Western Europe" },
+    { "code": "ES", "region": "Western Europe" },
+    { "code": "IT", "region": "Western Europe" },
+    { "code": "NL", "region": "Western Europe" },
+    { "code": "SE", "region": "Western Europe" },
+
+    { "code": "PL", "region": "Eastern Europe" },
+    { "code": "RO", "region": "Eastern Europe" },
+    { "code": "UA", "region": "Eastern Europe" },
+    { "code": "TR", "region": "Eastern Europe" },
+
+    { "code": "EG", "region": "Middle East and North Africa" },
+    { "code": "SA", "region": "Middle East and North Africa" },
+    { "code": "AE", "region": "Middle East and North Africa" },
+    { "code": "MA", "region": "Middle East and North Africa" },
+
+    { "code": "NG", "region": "Sub-Saharan Africa" },
+    { "code": "KE", "region": "Sub-Saharan Africa" },
+    { "code": "ZA", "region": "Sub-Saharan Africa" },
+    { "code": "GH", "region": "Sub-Saharan Africa" },
+
+    { "code": "IN", "region": "South Asia" },
+    { "code": "PK", "region": "South Asia" },
+    { "code": "BD", "region": "South Asia" },
+    { "code": "LK", "region": "South Asia" },
+
+    { "code": "ID", "region": "Southeast Asia" },
+    { "code": "PH", "region": "Southeast Asia" },
+    { "code": "VN", "region": "Southeast Asia" },
+    { "code": "TH", "region": "Southeast Asia" },
+    { "code": "MY", "region": "Southeast Asia" },
+    { "code": "SG", "region": "Southeast Asia" },
+
+    { "code": "JP", "region": "East Asia" },
+    { "code": "KR", "region": "East Asia" },
+    { "code": "CN", "region": "East Asia" },
+
+    { "code": "AU", "region": "Oceania" },
+    { "code": "NZ", "region": "Oceania" }
+  ]
+}

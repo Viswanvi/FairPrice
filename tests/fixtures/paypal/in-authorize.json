@@ -1,0 +1,98 @@
+{
+  "id": "1E49030044424212B",
+  "intent": "AUTHORIZE",
+  "status": "COMPLETED",
+  "payment_source": {
+    "paypal": {
+      "email_address": "[redacted]",
+      "account_id": "4BNWU5MMYLE36",
+      "account_status": "VERIFIED",
+      "name": "[redacted]",
+      "address": {
+        "country_code": "IN"
+      }
+    }
+  },
+  "purchase_units": [
+    {
+      "reference_id": "default",
+      "amount": {
+        "currency_code": "USD",
+        "value": "99.00"
+      },
+      "payee": {
+        "email_address": "[redacted]",
+        "merchant_id": "AQMG7ZUC9B4MJ"
+      },
+      "custom_id": "spike-A-IN-buyer",
+      "soft_descriptor": "PAYPAL *TEST STORE",
+      "payments": {
+        "authorizations": [
+          {
+            "status": "CREATED",
+            "id": "8B240477UW5403026",
+            "amount": {
+              "currency_code": "USD",
+              "value": "99.00"
+            },
+            "custom_id": "spike-A-IN-buyer",
+            "seller_protection": {
+              "status": "ELIGIBLE",
+              "dispute_categories": [
+                "ITEM_NOT_RECEIVED",
+                "UNAUTHORIZED_TRANSACTION"
+              ]
+            },
+            "expiration_time": "2026-12-10T05:33:36Z",
+            "links": [
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/8B240477UW5403026",
+                "rel": "self",
+                "method": "GET"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/8B240477UW5403026/capture",
+                "rel": "capture",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/8B240477UW5403026/void",
+                "rel": "void",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/8B240477UW5403026/reauthorize",
+                "rel": "reauthorize",
+                "method": "POST"
+              },
+              {
+                "href": "https://api.sandbox.paypal.com/v2/checkout/orders/1E49030044424212B",
+                "rel": "up",
+                "method": "GET"
+              }
+            ],
+            "create_time": "2026-11-11T05:33:36Z",
+            "update_time": "2026-11-11T05:33:36Z"
+          }
+        ]
+      }
+    }
+  ],
+  "payer": {
+    "name": "[redacted]",
+    "email_address": "[redacted]",
+    "payer_id": "4BNWU5MMYLE36",
+    "address": {
+      "country_code": "IN"
+    }
+  },
+  "create_time": "2026-11-11T05:28:50Z",
+  "update_time": "2026-11-11T05:33:36Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/1E49030044424212B",
+      "rel": "self",
+      "method": "GET"
+    }
+  ]
+}
