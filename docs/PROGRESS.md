@@ -19,14 +19,15 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 | 11 Orders dashboard | Frontend | Built (2026-11-11); verify gate needs Phase 6 | `GET /api/products/:id/orders`, `lib/db/orders.ts`, Orders tab (AG Grid, decision filter with counts, copy buttons, 5 s live refresh). Checked in the browser with temporary orders (deleted). Real sandbox orders come with Phase 6 |
 | 12 Benchmark | AI engine | Done (2026-11-11) | `npm run benchmark` → `data/benchmark-results.json` (committed, real Sonnet 5.5 run, ~$0.40); `GET /api/benchmark`; `/benchmark` page. Verify gate met: US tax guide >20%-off in low-relevance countries formula 34 vs AI 0; avg low-relevance discount 41.8% → 8.5% |
 | 13 Hardening | Backend | Done (2026-11-11) | Rules review: all 10 money-safety rules met (F1 fixed: accepted-offer capture moved into decide() as rule 7). Webhook logic testable + tested; SPEC §6 gaps covered; 21 Playwright tests (seller, buyer desktop+mobile, benchmark) pass. **Feature freeze** |
-| 14 Deploy + README | Demo/QA | Built (2026-11-11); human deploy + webhook + verify gate pending | `render.yaml` (web + Postgres, free, Singapore), `GET /api/health`, seed adds 5 benchmark products with DRAFT v1, full README. Render start command run locally on the production build: health 200 `{ok:true,db:true}` |
+| 14 Deploy + README | Demo/QA | Built (2026-11-11); human deploy + webhook + verify gate pending | `render.yaml` (web service, free, Singapore; reuses the existing free Render Postgres), `GET /api/health`, seed adds 5 benchmark products with DRAFT v1, full README. Render start command run locally on the production build: health 200 `{ok:true,db:true}` |
 | 15 Rehearse + submit | Everyone | Not started | |
 
 ## Decisions (newest first)
 
-- Phase 14 (user choices: Blueprint creates a NEW database; Render free plan; benchmark products seeded with draft tables; commit + push to a public repo). `render.yaml`:
-  - Web `fairprice` and Postgres `fairprice-db` (v16, same as docker-compose), both `plan: free` and `region: singapore`. `plan` must be explicit: when omitted, Render uses a paid instance.
-  - `DATABASE_URL` comes `fromDatabase` (internal URL).
+- Phase 14 (user choices: Render free plan; benchmark products seeded with draft tables; commit + push to the public repo `github.com/Viswanvi/FairPrice`; deploy from the user's existing Render account). `render.yaml`:
+  - Web `fairprice` only, with `plan: free` and `region: singapore`. `plan` must be explicit: when omitted, Render uses a paid instance.
+  - **Reuses the existing database.** The user's existing Render Postgres (free, Singapore, already migrated and seeded) is the hosted database, because a workspace gets only one free Postgres. The first plan, a new database from the Blueprint, was dropped for this reason. The `databases:` block stays in the file, commented out, for a fresh workspace.
+  - `DATABASE_URL` is `sync: false` (the database's Internal URL).
   - `SESSION_SECRET` uses `generateValue` (44-char base64).
   - Secrets use `sync: false`.
   - Non-secret fixed values are literal: the sandbox `PAYPAL_API_BASE`, `NEXT_PUBLIC_PAYPAL_ENVIRONMENT=sandbox`, `AI_MODEL`, `DEMO_GEO_OVERRIDE=true` and `NODE_VERSION=24`.
@@ -90,18 +91,17 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 ## Open issues (newest first)
 
 - Phase 14, still to do by a human:
-  1. Create an empty public GitHub repo; Claude adds it as `origin` and pushes `main`.
-  2. Render: New → Blueprint, then fill in the `sync: false` values (`APP_BASE_URL` = the service URL).
-  3. Seed once using the External URL.
+  1. ~~Create the GitHub repo and push~~ (done: `origin` is `https://Viswanvi@github.com/Viswanvi/FairPrice.git`, and pushing uses the Viswanvi GitHub login).
+  2. Render: New → Blueprint, then fill in the `sync: false` values (`DATABASE_URL` = the existing database's Internal URL; `APP_BASE_URL` = the service URL).
+  3. Seed: already done, because the hosted database is the one in `.env`. Re-run `npm run db:seed` only if data is missing.
   4. Register the PayPal webhook (5 events, README step 5), set `PAYPAL_WEBHOOK_ID`, redeploy.
   5. Verify gate: in a private window on the live URL, complete an India purchase and a VPN mismatch; the webhook events then appear in `webhook_events`.
 - Phase 14: the webhook order-ID path (`resource.supplementary_data.related_ids.order_id` for payment events) is still unverified. Check the first real events in `webhook_events` and `audit_log` after the verify-gate purchases.
 - Phase 14 risks:
   - **Free web service sleeps** after 15 minutes idle (the first request takes about a minute; the README says so).
-  - **Free Postgres expires** 30 days after creation.
-  - **Possible second free database.** Render may allow only one free database per workspace: if the Blueprint refuses, delete the old dev database or choose a paid plan.
+  - **Free Postgres expires** 30 days after creation. The existing database was created around 2026-11-10, so check its expiry date in Render against the judging period.
   - **Shared seller password and AI cost.** Judges need the seller password and there is no rate limiting, so anyone with it can run AI analyses. Set a spend limit on the Anthropic key, and share the password in the Devpost submission, not the README.
-- Local `.env` still points at the original Render database. That is now the dev/test database, and since Phase 14 it holds the 5 benchmark DRAFT tables.
+- Local `.env` and the hosted site share one database. Local test runs (`test:db`, `test:e2e`) briefly add `itest-`/`e2e-` rows and remove them when they finish, so the live seller list can show test products while tests run. Avoid running tests while recording the demo. Since Phase 14 the database also holds the 5 benchmark DRAFT tables.
 - `npm run build` loads `lib/env`, so it needs every env var. On Render they are set when the Blueprint is created. Locally, `SELLER_DEMO_PASSWORD` is still empty in `.env`; builds were run with a throwaway value in the process env.
 - Seller UI polish: in Formula vs AI, the "high" relevance chip is low-contrast on highlighted rows.
 

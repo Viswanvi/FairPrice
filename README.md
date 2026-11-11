@@ -134,7 +134,7 @@ uses it because it is the strongest signal available at checkout.
 **Sponsor tools**
 - **AG Grid Community** (`ag-grid-react`): the editable price table with Formula vs AI
   comparison, the orders dashboard, and the benchmark tables.
-- **Render**: hosts the web service and Postgres, defined in [`render.yaml`](render.yaml).
+- **Render**: hosts the web service (defined in [`render.yaml`](render.yaml)) and the Postgres database.
 
 ## Run it locally
 
@@ -169,27 +169,33 @@ than the sandbox.
 
 ## Deploy to Render
 
-1. **Create the Blueprint.** Push this repository to GitHub. In the Render dashboard, choose
-   **New → Blueprint** and pick the repository. Render reads `render.yaml`: a web service
-   `fairprice` and a Postgres database `fairprice-db`, both on the free plan in Singapore.
-2. **Fill in the values Render asks for:**
+1. **Have a Render Postgres database in Singapore.** If you don't have one yet, in the Render
+   dashboard choose **New → Postgres**, region **Singapore**, the free plan is fine.
+   `render.yaml` doesn't create the database, because a workspace gets only one free Postgres.
+   If yours has none, you can let the Blueprint create it instead: see the comment at the end
+   of `render.yaml`.
+2. **Create the Blueprint.** Push this repository to GitHub. In the Render dashboard, choose
+   **New → Blueprint** and pick the repository. Render reads `render.yaml`: one web service,
+   `fairprice`, on the free plan in Singapore.
+3. **Fill in the values Render asks for:**
+   - `DATABASE_URL`: the database's **Internal** URL (database → **Connect** → **Internal**);
    - `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID` (the same client ID);
    - `ANTHROPIC_API_KEY`;
    - `SELLER_DEMO_PASSWORD`;
    - `APP_BASE_URL`, your service URL, for example `https://fairprice.onrender.com`.
      Render shows the real URL after creation; if it differs, update this value.
    - Leave `PAYPAL_WEBHOOK_ID` empty for now.
-   - `SESSION_SECRET` is generated for you, and `DATABASE_URL` is wired to the database.
-     Migrations run when the service starts.
-3. **Check the deploy.** `https://<your-service>.onrender.com/api/health` should return
+   - `SESSION_SECRET` is generated for you. Migrations run when the service starts.
+4. **Check the deploy.** `https://<your-service>.onrender.com/api/health` should return
    `{"ok":true,"db":true}`.
-4. **Seed once, from your machine.** In Render, open `fairprice-db` → **Connect** → copy the
-   **External** URL. Then run:
+5. **Seed once, from your machine.** Copy the database's **External** URL (database →
+   **Connect** → **External**), then run:
    - PowerShell: `$env:DATABASE_URL="<external URL>"; npm run db:seed; Remove-Item Env:DATABASE_URL`
    - macOS / Linux: `DATABASE_URL="<external URL>" npm run db:seed`
 
-   It is safe to run again: it never overwrites a product or table that already exists.
-5. **Register the PayPal webhook.** At [developer.paypal.com](https://developer.paypal.com) → Apps & Credentials
+   It is safe to run again: it never overwrites a product or table that already exists. If the
+   database is the one your local `.env` already uses, plain `npm run db:seed` does it.
+6. **Register the PayPal webhook.** At [developer.paypal.com](https://developer.paypal.com) → Apps & Credentials
    (Sandbox) → your app → **Add Webhook**:
    - URL: `https://<your-service>.onrender.com/api/webhooks/paypal`
    - Events: `CHECKOUT.ORDER.APPROVED`, `PAYMENT.AUTHORIZATION.CREATED`,
@@ -197,7 +203,7 @@ than the sandbox.
 
    Copy the webhook's ID into `PAYPAL_WEBHOOK_ID` in Render (service → Environment), then save
    and redeploy.
-6. **Test it end to end.** Open the live URL in a private window and complete one purchase.
+7. **Test it end to end.** Open the live URL in a private window and complete one purchase.
 
 Render's free Postgres expires 30 days after it is created. Upgrade it, or recreate it and
 seed again, if the demo needs to live longer.

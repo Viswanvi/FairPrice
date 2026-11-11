@@ -1,5 +1,11 @@
-# Render Blueprint: one web service and one Render Postgres database, both in Singapore so
-# the app reaches the database over Render's private network (docs/SPEC.md section 13).
+# Render Blueprint: the FairPrice web service, in Singapore, using a Render Postgres database
+# in the same region over Render's private network (docs/SPEC.md section 13).
+#
+# The database is NOT created here: a Render workspace gets only one free Postgres, and the
+# hosted demo uses one that already exists. Paste its Internal URL as DATABASE_URL. To have
+# this Blueprint create a database instead, add the `databases:` block at the end of this file
+# (commented out) and switch DATABASE_URL to the `fromDatabase` form shown there.
+#
 # Deploy: Render dashboard > New > Blueprint > pick this repo. Render asks for every
 # `sync: false` value once, when the Blueprint is created; change them later under the
 # service's Environment tab. No secret is written in this file.
@@ -50,11 +56,10 @@ services:
       - key: AI_MODEL
         value: claude-sonnet-5-5
 
-      # Internal (private network) URL of the database below.
+      # The Postgres database's INTERNAL URL (database > Connect > Internal). The database
+      # must be in this service's region (singapore). Migrations run on start.
       - key: DATABASE_URL
-        fromDatabase:
-          name: fairprice-db
-          property: connectionString
+        sync: false
 
       # Seller sign-in for the demo. Render generates a random 256-bit session secret.
       - key: SESSION_SECRET
@@ -67,10 +72,17 @@ services:
       - key: DEMO_GEO_OVERRIDE
         value: "true"
 
-databases:
-  - name: fairprice-db
-    plan: free # Render's free Postgres expires 30 days after creation
-    region: singapore
-    databaseName: fairprice
-    user: fairprice
-    postgresMajorVersion: "16" # same as docker-compose.yml
+# Optional: let this Blueprint create the database (only if the workspace has no free one yet).
+# Uncomment, then replace DATABASE_URL above with:
+#   - key: DATABASE_URL
+#     fromDatabase:
+#       name: fairprice-db
+#       property: connectionString
+#
+# databases:
+#   - name: fairprice-db
+#     plan: free # Render's free Postgres expires 30 days after creation
+#     region: singapore
+#     databaseName: fairprice
+#     user: fairprice
+#     postgresMajorVersion: "16" # same as docker-compose.yml
