@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { E2E } from "./fixtures";
+import { E2E, expect, test } from "./fixtures";
 
 // Runs on desktop and on a phone viewport (playwright.config.ts). PayPal approval stays manual.
 

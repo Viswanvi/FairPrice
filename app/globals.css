@@ -133,3 +133,21 @@ body {
   background: var(--accent);
   opacity: 0.35;
 }
+
+/* Voice assistant: the element it points at or presses pulses briefly. */
+.assistant-highlight {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 12px;
+  animation: assistant-pulse 1.1s ease-in-out 3;
+}
+@keyframes assistant-pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistant-highlight {
+    animation: none;
+  }
+}

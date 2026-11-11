@@ -36,6 +36,39 @@ pay a single US price, and every pricing decision is recorded against its PayPal
    - if the price for the account's country is higher (VPN or mismatch), the order is voided
      and the buyer is offered the right price. **Nobody is charged a wrong amount.**
 
+## Voice assistant (English and Hindi)
+
+On the first visit, a small card offers **🎤 Talk in English**, **🎤 हिन्दी में बोलें** or
+**Explore on my own**. The assistant doesn't just answer questions: it **does the steps** for
+buyers and sellers.
+
+- **Buyers:** say "I want Figma templates" or "मुझे figma टेम्पलेट चाहिए". It searches the
+  products on sale, says the price for your country, opens the page, and points to the PayPal
+  button. After payment, it reads the result aloud.
+- **Sellers:**
+  - say "I want to sell my ebook". It opens sign-in (you type the password; it never hears it).
+  - It then fills in the new-product form from what you say, and presses **Continue**,
+    **Analyze audience** and **Generate fair prices**.
+  - It points to **Approve**, which only you can press.
+
+**How it works:**
+- **Listening:** the browser's speech recognition (Google's, in Chrome; Microsoft's, in Edge),
+  set to Indian English or Hindi, with live text on screen.
+- **Understanding:** Claude on the server (`POST /api/assistant`). It replies in the language
+  you spoke, and works through a fixed list of safe actions: search, open a page, fill the
+  product form, press a setup button, highlight something.
+- **Speaking:** the browser's built-in voices.
+
+**What it can never do:**
+- pay;
+- approve or edit prices;
+- handle passwords;
+- state a price the server didn't compute from the approved table.
+
+Seller-written text reaches it only as marked data. The endpoint is rate-limited.
+
+Talking needs Chrome or Edge and microphone permission; everyone can type instead.
+
 ## Try it with sandbox buyers
 
 **Seller sign-in:** go to `/seller`. On the hosted demo, the password is in the Devpost

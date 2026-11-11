@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("benchmark: the US tax guide shows the formula-vs-AI difference", async ({ page }) => {
   await page.goto("/benchmark?product=bench-us-tax-guide");

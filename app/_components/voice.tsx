@@ -12,6 +12,7 @@ import {
   type VoiceLanguage,
 } from "@/lib/checkout/voice";
 import { cx } from "./cx";
+import { findVoice, noSubscribe, speak, speechSupported, stopSpeaking } from "./speech";
 
 /**
  * Native-language help on the buyer page: a language picker, the explanation as text in that
@@ -114,14 +115,14 @@ function ListenButton({ lang, text, className }: { lang: VoiceLanguage; text: st
       setSpeaking(false);
       return;
     }
-    const voiceForLang = await findVoice(lang);
+    const voiceForLang = await findVoice(LANGUAGE_INFO[lang].voicePrefixes);
     if (!voiceForLang) {
       setNoVoiceFor(lang);
       return;
     }
     setNoVoiceFor(null);
     setSpeaking(true);
-    speak(text, lang, voiceForLang, () => setSpeaking(false));
+    speak(text, LANGUAGE_INFO[lang].speechLang, voiceForLang, () => setSpeaking(false));
   };
 
   return (
@@ -148,49 +149,6 @@ function ListenButton({ lang, text, className }: { lang: VoiceLanguage; text: st
       )}
     </>
   );
-}
-
-// ---- Web Speech API helpers (browser only) ----
-
-const noSubscribe = () => () => {};
-const speechSupported = () => typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-
-function stopSpeaking() {
-  if (speechSupported()) window.speechSynthesis.cancel();
-}
-
-/** The best installed voice for the language; voices can load late, so wait briefly for them. */
-async function findVoice(lang: VoiceLanguage): Promise<SpeechSynthesisVoice | null> {
-  const synth = window.speechSynthesis;
-  let voices = synth.getVoices();
-  if (voices.length === 0) {
-    voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
-      const done = () => resolve(synth.getVoices());
-      synth.addEventListener("voiceschanged", done, { once: true });
-      setTimeout(done, 1500);
-    });
-  }
-  for (const prefix of LANGUAGE_INFO[lang].voicePrefixes) {
-    const match = voices.find((v) => v.lang.toLowerCase().replace("_", "-").startsWith(prefix));
-    if (match) return match;
-  }
-  return null;
-}
-
-/** Read the text sentence by sentence (some browsers cut off long single utterances). */
-function speak(text: string, lang: VoiceLanguage, voice: SpeechSynthesisVoice, onDone: () => void) {
-  const synth = window.speechSynthesis;
-  synth.cancel();
-  const sentences = text.split(/(?<=[.!?।])\s+/).filter(Boolean);
-  sentences.forEach((sentence, i) => {
-    const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.lang = LANGUAGE_INFO[lang].speechLang;
-    utterance.voice = voice;
-    utterance.rate = 0.95;
-    if (i === sentences.length - 1) utterance.onend = onDone;
-    utterance.onerror = onDone;
-    synth.speak(utterance);
-  });
 }
 
 function SpeakerIcon({ active }: { active: boolean }) {

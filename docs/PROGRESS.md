@@ -24,6 +24,35 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Decisions (newest first)
 
+- **Voice assistant (branch `voice-agent`, user-approved plan, 2026-11-11).** `main` stays the safe submission, tagged `submission-safe`. It is merged only if the assistant is ready by **Thursday 4 PM IST**; otherwise the safe build is submitted.
+  - **Scope (user's choices):**
+    - The assistant is an *action guide*, not a Q&A bot.
+    - English and Hindi only for now.
+    - Free browser speech only (no paid speech service).
+    - The language is chosen by the tap the browser requires anyway (welcome card: Hindi first for Hindi browsers or the `?as=IN` demo). It switches when the visitor writes or speaks the other language (`detectLang`, word-based so Hinglish counts as Hindi).
+  - **Server:** `POST /api/assistant` (`lib/assistant/*`).
+    - **Model and speed:** Claude via `AI_MODEL` at effort `low`, with a manual tool loop of ≤ 4 calls; the last call uses `tool_choice: none`, so there is always a reply. The stable system prompt and tools are cached. Fallbacks are `"default"`.
+    - **App context:** sent as a mid-conversation **system** message (operator channel).
+    - **Tools (strict schemas):** `search_products`, `open_product`, `go_to`, `list_my_products`, `fill_new_product_form`, `press_button` (never Approve), `point_to`.
+    - **Prices:** always computed by `priceForCountry` from the APPROVED table. Seller text is wrapped in `<product_data>`.
+    - **Seller tools:** with no session, they open sign-in and highlight the password field.
+    - **Limits:** rate limit of 30 requests per 10 minutes per IP (in memory); input validated with Zod.
+    - **Rule change (user-approved):** CLAUDE.md's "the AI has no tools" still holds for the pricing AI. The assistant gets only these navigation and form tools, none of which move money or approve prices.
+  - **Client:** `app/_components/assistant/*`, mounted in the root layout so the conversation persists across pages (also kept in sessionStorage).
+    - **Speech:** recognition in `en-IN`/`hi-IN` with interim text; a "One moment" filler after 1.2 s in voice mode; hands-free listening again after each reply.
+    - **Actions:** pages opt in with `data-assistant` (pressable) and `data-assistant-highlight` (highlight only; Approve is highlight-only). The product form listens for a fill event.
+    - **Results:** the payment result is spoken through `CHECKOUT_RESULT_EVENT` and `resultSpeech`.
+    - **Shared code:** `app/_components/speech.ts` (also used by the Listen buttons).
+  - **Checked:**
+    - Real API smoke tests: English search 9.7 s cold / ~5 s warm; Hindi reply; seller sign-in routing.
+    - In the browser: welcome card → English greeting spoken → search → product card → "open it" navigated to the product page; Hindi search answered honestly (the ebook isn't on sale); seller sign-in → form filled by the assistant → it pressed Continue (product created) and Analyze audience (the analysis finished). The test product was deleted afterwards.
+    - The in-app browser blocks microphones, so the assistant showed its "microphone is blocked" note. **Real microphone input is untested until the user tries it in Chrome.**
+    - One transient AI error was seen; the route now logs the status code.
+  - **Tests:** 24 assistant unit tests; 4 Playwright tests (route-mocked: no AI cost). The existing specs use a fixture that marks the welcome card as seen.
+  - **Fixed during build:**
+    - Zod 4 runs `.refine` after `.min()` fails, so an empty conversation threw a 500. Guarded and tested.
+    - `.env` had lost the `\$` escape in the seller password (local sign-in failed). Restored.
+
 - Native-language voice help on the buyer page (user request, 2026-11-11, before the Wednesday-night freeze). The plan was approved with Hindi, Portuguese (Brazil) and Spanish, covering both the price and the result. The user also ticked "Something else" without naming a language, so that is still to be asked.
   - **Sentences:** `lib/checkout/voice.ts` holds fixed, written translations of the page's English copy. There is no AI at runtime.
   - **Copy rules:** each sentence follows the copy rules, has an exact "not charged" phrase per language, uses no `$` outside English and no formulas, and English is word for word the server message. 108 tests cover this.

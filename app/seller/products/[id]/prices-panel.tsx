@@ -116,14 +116,22 @@ export function PricesPanel({
           The AI starts from each country&apos;s price level, adjusts for who buys your product, and explains every price in
           one line. Code then checks every number against your limits and payment fees. Takes 30–60 seconds.
         </p>
-        {generating ? <WorkingLabel messages={GENERATE_MESSAGES} /> : <div><Button onClick={generate}>Generate fair prices</Button></div>}
+        {generating ? (
+          <WorkingLabel messages={GENERATE_MESSAGES} />
+        ) : (
+          <div>
+            <Button onClick={generate} data-assistant="generate_prices">
+              Generate fair prices
+            </Button>
+          </div>
+        )}
         {error && <ErrorNote>{error}</ErrorNote>}
       </Card>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-assistant-highlight="price_table">
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
@@ -139,11 +147,12 @@ export function PricesPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={generate} loading={generating}>
+            <Button variant="secondary" onClick={generate} loading={generating} data-assistant="generate_prices">
               Generate new version
             </Button>
             {latest.status === "draft" && (
-              <Button onClick={approve} loading={approving} disabled={invalidCount > 0 || generating}>
+              // Highlight only: the assistant can point at Approve but never press it.
+              <Button onClick={approve} loading={approving} disabled={invalidCount > 0 || generating} data-assistant-highlight="approve_button">
                 Approve version {latest.version}
               </Button>
             )}

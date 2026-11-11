@@ -61,7 +61,9 @@ export function AudiencePanel({ product, onContinue }: { product: ProductView; o
       {!profile && !busy && (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-line-strong p-6">
           <p className="text-sm text-ink-2">No analysis yet. It takes about 10–20 seconds.</p>
-          <Button onClick={analyze}>Analyze audience</Button>
+          <Button onClick={analyze} data-assistant="analyze_audience">
+            Analyze audience
+          </Button>
         </div>
       )}
 
@@ -89,7 +91,9 @@ export function AudiencePanel({ product, onContinue }: { product: ProductView; o
             ))}
           </ul>
           <div className="flex justify-end">
-            <Button onClick={onContinue}>Continue to prices</Button>
+            <Button onClick={onContinue} data-assistant="continue_to_prices">
+              Continue to prices
+            </Button>
           </div>
         </>
       )}

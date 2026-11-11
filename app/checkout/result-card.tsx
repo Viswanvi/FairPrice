@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { CHECKOUT_RESULT_EVENT } from "../_components/assistant/events";
 import { cx } from "../_components/ui";
 import { ResultVoice } from "../_components/voice";
 import type { CheckoutResult, CheckoutResultCode } from "@/lib/checkout/messages";
@@ -32,6 +33,10 @@ export function ResultCard({
   children?: ReactNode;
 }) {
   const { title, tone } = TITLES[result.result];
+  // Let the voice assistant (if it's in use) read the result aloud in the buyer's language.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(CHECKOUT_RESULT_EVENT, { detail: result }));
+  }, [result]);
   return (
     <div
       role="status"

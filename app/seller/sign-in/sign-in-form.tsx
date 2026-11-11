@@ -41,6 +41,7 @@ export function SignInForm() {
         <Field label="Password" htmlFor="password" hint="The demo seller password from the project's .env file.">
           <input
             id="password"
+            data-assistant-highlight="password_field"
             type="password"
             autoComplete="current-password"
             required
