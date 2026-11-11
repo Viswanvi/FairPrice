@@ -96,7 +96,12 @@ Claude Code updates this file at the end of every task. Keep it short and curren
   3. Seed: already done, because the hosted database is the one in `.env`. Re-run `npm run db:seed` only if data is missing.
   4. Register the PayPal webhook at `https://fairprice-edof.onrender.com/api/webhooks/paypal` (5 events, README "Deploy to Render" step 6), set `PAYPAL_WEBHOOK_ID`, redeploy.
   5. Verify gate: in a private window on the live URL, complete an India purchase and a VPN mismatch; the webhook events then appear in `webhook_events`.
-- Phase 14: the webhook order-ID path (`resource.supplementary_data.related_ids.order_id` for payment events) is still unverified. Check the first real events in `webhook_events` and `audit_log` after the verify-gate purchases.
+- Phase 14 verify gate, part 1 passed (2026-11-11). India buyer on the hosted app, `bench-design-templates` v1:
+  - **Charge:** shown IN $16, payer IN, MATCH, CAPTURED $16.
+  - **Audit trail:** create → authorize → decide → capture, each with a `${orderId}:step` request ID.
+  - **Webhooks:** 3 events, all verified. The webhook order-ID path `resource.supplementary_data.related_ids.order_id` is **confirmed** (recorded in `docs/SPIKE_RESULTS.md`).
+  - Also done: `PAYPAL_WEBHOOK_ID` set in Render (an unsigned POST gets 401) and `APP_BASE_URL` fixed.
+  - Still to run: the VPN mismatch (US buyer on `?as=IN`) and, optionally, the traveler.
 - Phase 14 risks:
   - **Free web service sleeps** after 15 minutes idle (the first request takes about a minute; the README says so).
   - **Free Postgres expires** 30 days after creation. The existing database was created around 2026-11-10, so check its expiry date in Render against the judging period.

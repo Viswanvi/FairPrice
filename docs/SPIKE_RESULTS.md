@@ -75,7 +75,24 @@ response carries the same values. Never use `purchase_units[0].shipping.address.
 - Guest card checkout (no PayPal account): what `payment_source` and payer fields look like.
   `decide()` already treats a missing country as UNCLEAR and a non-PayPal source as NOT_PAYPAL.
 - A declined authorization, capture errors, and idempotent replays with a reused `PayPal-Request-Id`.
-- Webhooks (needs the deployed URL — Phase 14) and Log in with PayPal (Should; skipped).
+- Log in with PayPal (Should; skipped). Webhooks were tested later, in Phase 14 (below).
+
+## Webhooks (Phase 14, deployed app, 2026-11-11)
+
+These come from a real sandbox purchase on the hosted app. India buyer, PayPal order
+`75E70078GX505315A`, MATCH, $16 captured. All 3 events passed `verify-webhook-signature`
+(`verified=true`):
+
+| Event | `resource.id` | Link back to our order |
+| --- | --- | --- |
+| `PAYMENT.AUTHORIZATION.CREATED` | authorization ID | `resource.supplementary_data.related_ids.order_id` (keys: `order_id`) |
+| `PAYMENT.CAPTURE.COMPLETED` | capture ID | `resource.supplementary_data.related_ids.order_id` (keys: `order_id`, `authorization_id`) |
+| `CHECKOUT.ORDER.APPROVED` | the PayPal order ID | `resource.id` |
+
+**What this shows:**
+- `lib/checkout/webhook.ts` reads these exact paths, which are now confirmed.
+- Events arrived 14–45 s after capture, and not in order: `ORDER.APPROVED` came last.
+- Each event re-ran the idempotent finalize, and the result was `PAID` each time, with no second capture.
 
 ## Decision
 
