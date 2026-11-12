@@ -1,5 +1,5 @@
 /**
- * The guided tour (docs/AVATAR_SPEC.md section 3). Fixed, reviewed lines: nothing here is
+ * The guided tour. Fixed, reviewed lines: nothing here is
  * generated at runtime. English is the spec's text word for word; Hindi is a faithful written
  * translation (same amounts, same meaning, nothing added). Pure data, tested in tour.test.ts.
  *

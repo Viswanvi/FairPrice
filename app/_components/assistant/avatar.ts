@@ -1,5 +1,5 @@
 /**
- * When Alex may use video, and how much of it (AVATAR_SPEC section 6). Pure browser state in
+ * When Alex may use video, and how much of it. Pure browser state in
  * sessionStorage; Alex itself is in ./alex.ts.
  */
 

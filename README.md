@@ -132,11 +132,11 @@ checked by Zod schemas:
   committed (`data/benchmark-results.json`, `npm run benchmark`).
 
 **To build it: Claude Code.** Claude Code wrote the code phase by phase. It worked from the
-development spec (`docs/SPEC.md`) and the phase prompts (`docs/BUILD_PROMPTS.md`), following
-the rules in [`CLAUDE.md`](CLAUDE.md): money-safety rules, tests first for the eligibility
-engine, formula and validator, and no guessed PayPal field paths. The team made the product
-decisions, reviewed each phase, and ran the PayPal sandbox spike (`docs/SPIKE_RESULTS.md`)
-that confirmed the idea works.
+development spec ([`docs/SPEC.md`](docs/SPEC.md)), following the rules in
+[`CLAUDE.md`](CLAUDE.md): money-safety rules, tests first for the eligibility engine, formula
+and validator, and no guessed PayPal field paths. The team made the product decisions,
+reviewed each phase, and ran the PayPal sandbox spike
+([`docs/SPIKE_RESULTS.md`](docs/SPIKE_RESULTS.md)) that confirmed the idea works.
 
 ## Architecture
 
@@ -254,7 +254,6 @@ seed again, if the demo needs to live longer.
 
 - [`docs/SPEC.md`](docs/SPEC.md): the full development document.
 - [`docs/SPIKE_RESULTS.md`](docs/SPIKE_RESULTS.md): what the PayPal sandbox actually returned.
-- [`docs/PROGRESS.md`](docs/PROGRESS.md): build log and decisions.
 - [`data/README.md`](data/README.md): where the price-level, fee and benchmark data come from.
 
 The five benchmark products are invented for the demo. Prices are demo values, and FairPrice

@@ -14,8 +14,7 @@ import { finalizeOrder, type FinalizeDeps } from "./finalizeOrder";
  * Field paths: CHECKOUT.ORDER.APPROVED carries the order as `resource` (resource.id = order ID).
  * Payment events are expected to reference it at resource.supplementary_data.related_ids.order_id.
  * Webhooks were NOT covered by the Phase 2 spike, so both are parsed defensively: anything that
- * doesn't match is recorded as "unmatched" and nothing else happens. Confirm with a real event in
- * Phase 14 (docs/PROGRESS.md).
+ * doesn't match is recorded as "unmatched" and nothing else happens.
  */
 
 export const webhookEventSchema = z.looseObject({

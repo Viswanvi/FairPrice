@@ -1,5 +1,5 @@
 /**
- * System prompts for the two AI calls (docs/BUILD_PROMPTS.md appendix). Versioned so every
+ * System prompts for the two AI calls. Versioned so every
  * stored table and stability report can say which prompts produced it.
  *
  * Output shape is also enforced by structured outputs (JSON schema) and Zod; the prompts

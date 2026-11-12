@@ -102,7 +102,7 @@ type AlexState = "off" | "starting" | "live" | "paused";
 const STORAGE_KEY = "fp_assistant_v1";
 export const WELCOME_KEY = "fp_assistant_welcome_seen";
 
-/** Expected turns for a Talk task (AVATAR_SPEC section 6): seller setup 6, anything else 2. */
+/** Expected turns for a Talk task: seller setup 6, anything else 2. */
 const talkTurns = (path: string) => (path.startsWith("/seller") ? 6 : 2);
 
 const LISTEN_LANG: Record<string, string> = { en: "en-IN", hi: "hi-IN" };
@@ -383,7 +383,7 @@ export function Assistant() {
     setVideo(on);
   }, []);
 
-  /** Start a task: video for its expected turns plus two (AVATAR_SPEC section 6). */
+  /** Start a task: video for its expected turns plus two. */
   const startTask = useCallback((expectedTurns: number) => {
     const video = outputRef.current === "video" && videoOk();
     taskRef.current = { turns: expectedTurns, video };
@@ -479,7 +479,7 @@ export function Assistant() {
         onTurnComplete: () => {
           alexBubbleRef.current = null;
           userBubbleRef.current = null;
-          // Video budget: n + 2 Alex turns per task, then voice (spec section 6).
+          // Video budget: n + 2 Alex turns per task, then voice.
           if (videoRef.current) {
             if (videoSinceRef.current) addVideoMs(Date.now() - videoSinceRef.current);
             videoSinceRef.current = Date.now();
@@ -1056,7 +1056,7 @@ export function Assistant() {
     void talk();
   };
 
-  /** The visitor chose how the guide speaks (spec rule 7: switch to voice or text). */
+  /** The visitor chose how the guide speaks (they can always switch to voice or text). */
   const chooseOutput = (o: Output) => {
     outputRef.current = o;
     setOutput(o);
@@ -1239,7 +1239,7 @@ export function Assistant() {
             <span className="absolute bottom-2 left-2 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-medium text-ink-2">{text.aiLabel}</span>
           </div>
 
-          {/* Spec rule 7: the visitor can always switch to voice or text. */}
+          {/* The visitor can always switch to voice or text. */}
           <div className="flex items-center gap-2 border-b border-line px-4 py-1.5">
             <span className="flex-1 text-xs text-ink-3">{text.speakWith}</span>
             <div role="radiogroup" aria-label={text.speakWith} data-testid="assistant-output" className="flex rounded-lg border border-line-strong p-0.5 text-xs">

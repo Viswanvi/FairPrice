@@ -8,7 +8,7 @@ import { z } from "zod";
 
 /** Languages with written UI text and a browser voice preset; any other language code also works. */
 export const ASSISTANT_LANGS = ["en", "hi"] as const;
-/** A language code such as "en", "hi", "es" or "pt-BR" (AVATAR_SPEC section 7: any language). */
+/** A language code such as "en", "hi", "es" or "pt-BR" (any language). */
 export const assistantLangSchema = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/, { error: "lang must be a language code" });
 export type AssistantLang = string;
 

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { TOUR } from "@/lib/assistant/tour";
 
-// The guided tour (docs/AVATAR_SPEC.md section 3) with Alex mocked out: no Gemini call is made.
+// The guided tour with Alex mocked out: no Gemini call is made.
 // Alex's socket is replaced by a fake that confirms each line at once, or refused (then the
 // browser voice speaks; headless voices are removed, so each line just shows as text).
 

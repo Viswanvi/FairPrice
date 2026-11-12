@@ -4,7 +4,7 @@
  * handles turn-taking and barge-in; Gemini streams back the avatar as fragmented MP4 (or PCM audio
  * in voice-only mode), plus captions and tool calls. Alex's rules and tools are set on the server.
  *
- * AVATAR_SPEC section 6 on a live session: after 20 s with nobody talking, Alex pauses (the stream
+ * On a live session: after 20 s with nobody talking, Alex pauses (the stream
  * closes) and picks the same conversation up again, via Gemini's resume handle, on the next tap,
  * message or tour step. A hidden tab pauses him too. Only one session at a time.
  */

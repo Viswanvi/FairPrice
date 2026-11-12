@@ -7,7 +7,7 @@ import {
   VIDEO_SPARE_TURNS,
 } from "@/app/_components/assistant/avatar";
 
-// The video budget (AVATAR_SPEC section 6): n + 2 turns per task, then voice.
+// The video budget: n + 2 turns per task, then voice.
 const store = new Map<string, string>();
 beforeEach(() => {
   store.clear();

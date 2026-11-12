@@ -8,7 +8,7 @@ import { isIP } from "node:net";
  * forgery: http(s) only, default ports only, no credentials in the URL, every hostname
  * (including each redirect hop) must resolve only to public addresses, 5 s timeout, 1 MB cap.
  * Known gap: a hostname could re-resolve between the check and the fetch (DNS rebinding);
- * acceptable for a sandbox demo, noted in docs/PROGRESS.md.
+ * acceptable for a sandbox demo.
  */
 
 export type PageFetchErrorCode =
