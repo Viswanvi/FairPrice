@@ -202,6 +202,40 @@ export function heardOwnLine(cmd: TourCommand, line: string | null): boolean {
   return TOUR_COMMANDS[cmd].some((w) => l.includes(w));
 }
 
+/**
+ * A line split into its sentences, each keeping its own punctuation and trailing space (so joining
+ * them gives the line back). Ends at . ! ? or the Hindi full stop । followed by a space or the end,
+ * so "$24.50" stays whole.
+ */
+export function sentencesOf(text: string): string[] {
+  const out: string[] = [];
+  const end = /[.!?।]+["'”’)\]]*(\s+|$)/g;
+  let start = 0;
+  for (let m = end.exec(text); m; m = end.exec(text)) {
+    out.push(text.slice(start, m.index + m[0].length));
+    start = m.index + m[0].length;
+  }
+  if (start < text.length) out.push(text.slice(start));
+  return out.filter((s) => s.trim());
+}
+
+/**
+ * What is left of a tour line when the visitor paused it after Alex had said `wordsSaid` words:
+ * the line from the start of the sentence he was in (said again in full, since his transcript can
+ * run a little ahead of what was heard). Nothing said yet: the whole line.
+ */
+export function restOfLine(line: string, wordsSaid: number): string {
+  if (!(wordsSaid > 0)) return line;
+  const parts = sentencesOf(line);
+  let said = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const n = parts[i].trim().split(/\s+/).filter(Boolean).length;
+    if (said + n >= wordsSaid) return parts.slice(i).join("").trim();
+    said += n;
+  }
+  return (parts[parts.length - 1] ?? line).trim();
+}
+
 /** Marker on the signed-in seller's product list (app/seller/page.tsx). */
 export const SELLER_HOME_MARKER = "seller_home";
 

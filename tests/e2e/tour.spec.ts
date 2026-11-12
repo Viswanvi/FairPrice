@@ -108,7 +108,7 @@ test("skipping or stopping Alex mid-line never brings in a second voice", async 
   expect(await page.evaluate(() => (window as unknown as { __spoken: number }).__spoken)).toBe(0);
 });
 
-test("Pause holds Alex: nothing new is said until Resume, then the step repeats", async ({ page }) => {
+test("Pause holds Alex: nothing new is said until Resume, then he picks the step up from his sentence", async ({ page }) => {
   await connection(page, SLOW);
   await countBrowserVoice(page);
   const scripts = await slowAlex(page);
@@ -123,7 +123,10 @@ test("Pause holds Alex: nothing new is said until Resume, then the step repeats"
   expect(scripts.length).toBe(1); // held: no new line
   await bar.getByRole("button", { name: "Resume" }).click();
   await expect.poll(() => scripts.length).toBe(2);
-  expect(scripts[1]).toBe(line("T1")); // the paused step starts again
+  // He had said "Hi! I'm the", so he goes on from the sentence he was in, not from the top...
+  expect(scripts[1]).toBe(line("T1").slice(line("T1").indexOf("I'm the FairPrice guide.")));
+  // ...and the line is in the chat once, not again for each Resume.
+  await expect(page.getByTestId("assistant-panel").getByText(line("T1"), { exact: true })).toHaveCount(1);
   expect(await page.evaluate(() => (window as unknown as { __spoken: number }).__spoken)).toBe(0);
 });
 
@@ -571,4 +574,39 @@ test("asking 'walk me through the demo' starts the tour", async ({ page }) => {
   await expect(page.getByTestId("assistant-tour")).toBeVisible();
   await expect(panel).toContainText(line("T1"));
   expect(alex.scripts[0]).toBe(line("T1"));
+});
+
+test("ending Alex and talking to him again continues the same conversation, with no second greeting", async ({ page }) => {
+  await connection(page, SLOW);
+  const setups: Array<Record<string, unknown>> = [];
+  const greetings: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") {
+        setups.push(msg);
+        ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+        ws.send(JSON.stringify({ type: "resume_handle", handle: "conversation-1" }));
+      } else if (msg.type === "text" && String(msg.text).startsWith("APP: The visitor just opened the guide")) {
+        greetings.push(String(msg.text));
+        ws.send(JSON.stringify({ type: "alex_text", text: "Hi, I'm Alex. Buying or selling?" }));
+        ws.send(JSON.stringify({ type: "turn_complete" }));
+      }
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-welcome").getByRole("button", { name: "Talk to Alex" }).click();
+  const main = page.getByTestId("assistant-main");
+  await expect(main).toHaveText(/Alex is listening/);
+  await expect(page.getByTestId("assistant-panel")).toContainText("Hi, I'm Alex. Buying or selling?");
+
+  await main.click(); // "Alex is listening · tap to end"
+  await expect(main).toHaveText(/Talk to Alex/);
+  await main.click(); // talk again
+  await expect(main).toHaveText(/Alex is listening/);
+  expect(setups).toHaveLength(2);
+  expect(setups[1].resume_handle).toBe("conversation-1"); // the same Gemini conversation
+  await page.waitForTimeout(1000);
+  expect(greetings).toHaveLength(1); // greeted once, not again
 });

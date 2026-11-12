@@ -4,7 +4,17 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AssistantLang, AssistantResponse, ClientAction, ProductCard } from "@/lib/assistant/schema";
 import { MAX_TURN_CHARS, MAX_TURNS } from "@/lib/assistant/schema";
-import { heardOwnLine, isTourRequest, SELLER_HOME_MARKER, sellerArea, TOUR, tourCommand, tourLang, type TourStep } from "@/lib/assistant/tour";
+import {
+  heardOwnLine,
+  isTourRequest,
+  restOfLine,
+  SELLER_HOME_MARKER,
+  sellerArea,
+  TOUR,
+  tourCommand,
+  tourLang,
+  type TourStep,
+} from "@/lib/assistant/tour";
 import type { CheckoutResult } from "@/lib/checkout/messages";
 import { resultSpeech, VOICE_LANGUAGES, type VoiceLanguage } from "@/lib/checkout/voice";
 import { cx } from "../cx";
@@ -25,6 +35,7 @@ import {
   setAlexHold,
   setAlexMuted,
   tellAlex,
+  wordsSaidWhenStopped,
   type AlexHandlers,
   type PresentResult,
 } from "./alex";
@@ -304,6 +315,8 @@ export function Assistant() {
   const holdRef = useRef<(on: boolean) => void>(() => {});
   /** The latest endStep, for Alex's caption handler (set up before endStep exists). */
   const endStepRef = useRef<(end: StepEnd) => void>(() => {});
+  /** A paused tour step to pick up mid-line: its id and how many words Alex had said. */
+  const resumeFromRef = useRef<{ step: string; words: number } | null>(null);
   const tourRef = useRef<{ token: number; step: AbortController | null; end: StepEnd | null; resume: (() => void) | null }>({
     token: 0,
     step: null,
@@ -411,9 +424,12 @@ export function Assistant() {
     [router],
   );
 
-  /** Start Alex from a tap. Returns false if he can't start (the caller falls back to the old guide). */
+  /**
+   * Start Alex from a tap. Returns false if he can't start (the caller falls back to the old guide).
+   * `resume`: pick the visitor's earlier conversation in this tab up again instead of a new one.
+   */
   const startAlex = useCallback(
-    async (greet: boolean): Promise<boolean> => {
+    async (greet: boolean, resume = false): Promise<boolean> => {
       setAlexState("starting");
       const handlers: AlexHandlers = {
         onToolCall: runAlexTool,
@@ -471,7 +487,7 @@ export function Assistant() {
       };
       const audioOnly = outputRef.current !== "video" || !videoAvailable() || videoTurnsLeft() <= 0;
       try {
-        const { mic } = await connectAlex({ lang: langRef.current, audioOnly }, handlers);
+        const { mic } = await connectAlex({ lang: langRef.current, audioOnly, resume }, handlers);
         setAlexMuted(outputRef.current === "text");
         setAlexState("live");
         setNote(mic ? null : ui(langRef.current).blocked);
@@ -633,10 +649,18 @@ export function Assistant() {
   // ---- speaking a fixed line (tour lines, payment results): Alex if he's on, else the voice ----
 
   const sayLine = useCallback(
-    async (text: string, l: AssistantLang): Promise<PresentResult | "voice"> => {
+    async (text: string, l: AssistantLang, opts: { show?: boolean } = {}): Promise<PresentResult | "voice"> => {
+      // The line's bubble in the chat. Not again when it is already there: a paused line picked up
+      // where it stopped (`show: false`), or a line said again right after itself.
+      const addBubble = () =>
+        setTurns((t) => {
+          const last = t[t.length - 1];
+          if (opts.show === false || (last?.role === "assistant" && last.text === text)) return t;
+          return [...t, { role: "assistant", text }];
+        });
       if (alexRef.current === "paused") await continueAlex(); // asleep after silence: wake him for the line
       if (alexRef.current === "live" || alexRef.current === "paused") {
-        setTurns((t) => [...t, { role: "assistant", text }]);
+        addBubble();
         alexBubbleRef.current = null;
         setStatus("speaking");
         // Alex's live captions of a fixed line would only repeat it: the bubble above shows it exactly.
@@ -649,7 +673,7 @@ export function Assistant() {
         // Only when Alex is really gone does the browser voice say the line instead. A line the
         // visitor stopped (skip / stop / pause) stays stopped: no second voice.
         if (r !== "closed" || (alexRef.current as AlexState) !== "off") return r; // may have changed while he spoke
-      } else setTurns((t) => [...t, { role: "assistant", text }]);
+      } else addBubble();
       setStatus("speaking");
       await new Promise<void>((resolve) => void say(text, l, resolve));
       setStatus("idle");
@@ -730,9 +754,13 @@ export function Assistant() {
 
       try {
         listen();
-        const line = step.line[tourLang(langRef.current || l)];
+        const full = step.line[tourLang(langRef.current || l)];
+        // Picked up after Pause: from the sentence Alex was in, and the line is already in the chat.
+        const pausedAt = resumeFromRef.current?.step === step.id ? resumeFromRef.current.words : 0;
+        resumeFromRef.current = null;
+        const line = restOfLine(full, pausedAt);
         speakingLine = line;
-        const said = await sayLine(line, langRef.current || l);
+        const said = await sayLine(line, langRef.current || l, { show: pausedAt === 0 });
         // The visitor talked over Alex. Gemini cuts him off at once, but the words ("pause", "skip"…)
         // arrive a moment later: wait for them, so the command acts on THIS step (GCS: a voice
         // interruption pauses the tour). No command: the tour waits while Alex answers them.
@@ -818,13 +846,16 @@ export function Assistant() {
           continue;
         }
         if (end === "pause") {
+          // Where he was in the line (hush() noted it when Pause was pressed), for Resume.
+          const words = wordsSaidWhenStopped();
           setTour({ index: i, paused: true, waiting: false });
           setAlexHold(true); // GCS hold: Alex hears and says nothing until Resume
           await new Promise<void>((resolve) => (t.resume = resolve));
           t.resume = null;
           setAlexHold(false);
           if (isAlexPaused()) await continueAlex();
-          continue; // repeat the paused step from its start
+          resumeFromRef.current = { step: step.id, words };
+          continue; // the paused step again, from the sentence he was in
         }
         // Skipping the seller sign-in skips the seller part (spec: T6 → T8).
         if (step.id === "T7" && end === "skip") {
@@ -941,7 +972,10 @@ export function Assistant() {
   const talk = async () => {
     openGuide();
     startTask(talkTurns(window.location.pathname));
-    if (await startAlex(turnsRef.current.length === 0 || alexRef.current === "off")) return;
+    // A conversation already on screen goes on (same Gemini session, no second greeting); only a
+    // visitor who hasn't talked to Alex yet in this tab is greeted.
+    const fresh = turnsRef.current.length === 0;
+    if (await startAlex(fresh, !fresh)) return;
     setNote(ui(langRef.current).noAlex);
     const l = langRef.current;
     const greeting = ui(l).greeting;
@@ -957,7 +991,7 @@ export function Assistant() {
     openGuide();
     handsFreeRef.current = false;
     startTask(TOUR.length);
-    if (alexRef.current === "off") await startAlex(false);
+    if (alexRef.current === "off") await startAlex(false, turnsRef.current.length > 0);
     else if (alexRef.current === "paused") await continueAlex();
     void runTour(l);
   };

@@ -79,6 +79,8 @@ let userLine = "";
 /** The fixed line Alex is saying: how many words it has, and whether Gemini reported a turn end during it. */
 let pending: { resolve: (r: PresentResult) => void; words: number; sawEnd?: boolean } | null = null;
 const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+/** Words of the pending fixed line Alex had said when he was last stopped (hushAlex). */
+let stoppedWords = 0;
 /**
  * Has Alex actually said the pending line? Judged by his own transcript, not by timing: Gemini also
  * ends turns that aren't the line (its reply to the visitor's "skip", a turn we cut in on), and
@@ -130,6 +132,12 @@ let moof: Uint8Array | null = null;
 let queue: Uint8Array[] = [];
 let codec = 'video/mp4; codecs="avc1.42c020, mp4a.40.2"';
 let seekToLive = true;
+/**
+ * The picture is held still: stopped, paused or cut off while Alex was talking. Gemini keeps
+ * streaming the rest of that turn's video, which would show his mouth moving with no sound, so it
+ * isn't played; when he next speaks, playback jumps to the live picture.
+ */
+let frozen = false;
 
 function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   const r = new Uint8Array(a.length + b.length);
@@ -145,6 +153,7 @@ function resetPlayer() {
   sb = null;
   queue = [];
   seekToLive = true;
+  frozen = false;
   if (!videoEl) return;
   keepLastFrame(videoEl);
   videoEl.pause();
@@ -170,9 +179,13 @@ function flush() {
   const v = videoEl;
   if (!v || !sb || sb.updating || !mse || mse.readyState !== "open") return;
   try {
-    if (sb.buffered.length && v.currentTime - sb.buffered.start(0) > 30) {
-      sb.remove(0, v.currentTime - 10); // the stream runs for the whole session: keep a short window
-      return;
+    if (sb.buffered.length) {
+      // While frozen the playhead stands still, so the window is kept behind the newest data instead.
+      const pos = frozen ? sb.buffered.end(sb.buffered.length - 1) : v.currentTime;
+      if (pos - sb.buffered.start(0) > 30) {
+        sb.remove(0, pos - 10); // the stream runs for the whole session: keep a short window
+        return;
+      }
     }
     const next = queue.shift();
     if (next) sb.appendBuffer(next as BufferSource);
@@ -199,7 +212,7 @@ function openMse() {
       sb.addEventListener("error", () => mse === src && fallbackToAudio());
       sb.addEventListener("updateend", () => {
         if (!sb || mse !== src) return;
-        if (sb.buffered.length) {
+        if (sb.buffered.length && !frozen) {
           const end = sb.buffered.end(sb.buffered.length - 1);
           if (seekToLive || end - v.currentTime > 1.5) {
             v.currentTime = Math.max(0, end - 0.3); // stay near the live edge
@@ -283,7 +296,33 @@ function playbackRemaining(): number {
   return s;
 }
 
+/** Hold the picture on its current frame (his mouth stops at once). */
+function freezeVideo() {
+  if (!videoEl || frozen) return;
+  frozen = true;
+  keepLastFrame(videoEl);
+  videoEl.pause();
+}
+
+/** Play again from the live picture, skipping the frames of the turn that was cut off. */
+function unfreezeVideo() {
+  if (!frozen) return;
+  frozen = false;
+  const v = videoEl;
+  if (!v || !sb || !sb.buffered.length) return;
+  try {
+    v.currentTime = Math.max(0, sb.buffered.end(sb.buffered.length - 1) - 0.3);
+  } catch {
+    /* not seekable yet: the next update seeks to the live edge */
+  }
+  v.play().catch(() => {
+    v.muted = true;
+    v.play().catch(() => {});
+  });
+}
+
 function silence() {
+  if (turnActive) freezeVideo(); // he was saying something: stop the picture too, not just the sound
   if (videoEl) videoEl.muted = true;
   audioSources.forEach((s) => {
     try {
@@ -297,7 +336,9 @@ function silence() {
 }
 
 function unmute() {
-  if (videoEl && !muted && !outputBlocked()) videoEl.muted = false;
+  if (outputBlocked()) return;
+  unfreezeVideo();
+  if (videoEl && !muted) videoEl.muted = false;
 }
 
 // ---- turns ----
@@ -638,7 +679,10 @@ export async function resumeAlex(): Promise<void> {
  * Start Alex (from a tap: browsers allow sound and the mic only then). Resolves once Gemini is
  * connected; `mic` is false when the microphone is blocked (the visitor can still type).
  */
-export async function connectAlex(opts: { lang?: string; audioOnly: boolean }, h: AlexHandlers): Promise<{ mic: boolean }> {
+export async function connectAlex(
+  opts: { lang?: string; audioOnly: boolean; resume?: boolean },
+  h: AlexHandlers,
+): Promise<{ mic: boolean }> {
   closeAlex();
   // Unlock audio now, inside the visitor's tap: if Alex later switches to voice only (budget used,
   // slow network, Voice chosen) his audio plays through this player, which Chrome would otherwise
@@ -647,14 +691,23 @@ export async function connectAlex(opts: { lang?: string; audioOnly: boolean }, h
   void outCtx.resume();
   handlers = h;
   setupMsg = { path: "/", lang: opts.lang };
-  resumeHandle = null;
+  if (!opts.resume) resumeHandle = null; // a new conversation; with `resume`, the last one goes on
   forceAudio = opts.audioOnly || !MSE;
   paused = false;
   try {
     await openSocket();
   } catch (e) {
-    closeAlex();
-    throw e;
+    if (!resumeHandle) {
+      closeAlex();
+      throw e;
+    }
+    resumeHandle = null; // the old conversation couldn't be restored: start a fresh one
+    try {
+      await openSocket();
+    } catch (e2) {
+      closeAlex();
+      throw e2;
+    }
   }
   const mic = await startMic();
   watch();
@@ -718,6 +771,8 @@ export async function presentToAlex(line: string): Promise<PresentResult> {
  * else (such as the browser voice) should say it instead.
  */
 export function hushAlex(): void {
+  // How far he got into the fixed line he was saying, so a paused tour can pick it up from there.
+  stoppedWords = pending ? wordCount(spokenWords(alexLine)) : 0;
   silence();
   if (turnActive) dropTurn = true;
   quietUntil = 0;
@@ -744,6 +799,9 @@ export function setAlexHold(on: boolean): void {
 
 export const isAlexHeld = (): boolean => outputHeld;
 
+/** Words of the fixed line Alex had said when he was last stopped (0: none, or no line). */
+export const wordsSaidWhenStopped = (): number => stoppedWords;
+
 /** After a tour line: keep Alex quiet until the next line (at most 8 s), so he doesn't add his own talk. */
 export function quietAlexUntilNextLine(): void {
   quietUntil = Date.now() + QUIET_MAX_MS;
@@ -762,5 +820,6 @@ export function closeAlex(): void {
   void micCtx?.close().catch(() => {});
   micCtx = null;
   resetTurnState();
-  resumeHandle = null;
+  // The resume handle is kept: "Talk to Alex" again in this tab picks the same conversation up
+  // (connectAlex with resume), instead of a new one that greets the visitor from the start.
 }

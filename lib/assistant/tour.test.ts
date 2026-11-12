@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { numbersIn } from "@/lib/avatar/faithful";
-import { heardOwnLine, isTourRequest, SELLER_HOME_MARKER, sellerArea, TOUR, TOUR_LANGS, TOUR_MARKERS, tourCommand } from "./tour";
+import { heardOwnLine, isTourRequest, restOfLine, SELLER_HOME_MARKER, sellerArea, sentencesOf, TOUR, TOUR_LANGS, TOUR_MARKERS, tourCommand } from "./tour";
 
 const APP = path.join(process.cwd(), "app");
 
@@ -99,6 +99,23 @@ describe("tour", () => {
     expect(sellerArea("/seller/sign-in", none)).toBeNull(); // form not rendered yet
     expect(sellerArea("/p/bench-design-templates", none)).toBeNull(); // navigation not started
     expect(appSource()).toContain(`data-assistant-highlight="${SELLER_HOME_MARKER}"`);
+  });
+
+  it("splits a line into sentences without breaking prices, and gives the line back when joined", () => {
+    expect(sentencesOf("Hi! I'm the guide. Let me show you.")).toEqual(["Hi! ", "I'm the guide. ", "Let me show you."]);
+    expect(sentencesOf("It costs $24.50 here. Then more.")).toEqual(["It costs $24.50 here. ", "Then more."]);
+    for (const step of TOUR) for (const lang of TOUR_LANGS) expect(sentencesOf(step.line[lang]).join("")).toBe(step.line[lang]);
+    expect(sentencesOf(TOUR[0].line.hi).length).toBeGreaterThan(1); // the Hindi full stop । ends a sentence too
+  });
+
+  it("after a pause, picks the line up from the sentence Alex was in", () => {
+    const t1 = TOUR.find((s) => s.id === "T1")!.line.en; // "Hi! I'm the FairPrice guide. …"
+    expect(restOfLine(t1, 0)).toBe(t1); // nothing said yet: the whole line
+    expect(restOfLine(t1, 1)).toBe(t1); // still in "Hi!"
+    expect(restOfLine(t1, 3)).toBe(t1.slice(t1.indexOf("I'm the FairPrice guide."))); // "Hi! I'm the" → from sentence 2
+    expect(restOfLine(t1, 999)).toBe("Let me show you."); // past the end: the last sentence
+    const hi = TOUR.find((s) => s.id === "T1")!.line.hi;
+    expect(restOfLine(hi, 2)).toBe(hi.slice(hi.indexOf("मैं"))); // "नमस्ते! मैं" → from the second sentence
   });
 
   it("understands skip and stop in English and Hindi", () => {
