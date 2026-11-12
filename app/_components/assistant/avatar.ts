@@ -3,7 +3,7 @@
  * sessionStorage; Alex itself is in ./alex.ts.
  */
 
-// ---- When: a fast connection only ----
+// ---- When: by default a fast connection only; the visitor may still pick Video ----
 
 interface NetworkInformationLike {
   effectiveType?: string;
@@ -11,7 +11,11 @@ interface NetworkInformationLike {
   saveData?: boolean;
 }
 
-/** Video only when the browser reports 4g, at least 5 Mbps and no data saver; unknown means no. */
+/**
+ * Video by default only when the browser reports 4g, at least 5 Mbps and no data saver; unknown
+ * means no. Chrome's figure is a rough guess (often low on home Wi-Fi), so it only sets the default:
+ * the visitor can still choose Video, and a stalled video falls back to voice (alex.ts).
+ */
 export function videoNetworkOk(): boolean {
   if (typeof navigator === "undefined") return false;
   const c = (navigator as Navigator & { connection?: NetworkInformationLike }).connection;
@@ -77,9 +81,15 @@ export function videoTurnsLeft(): number {
   return readBudget().left;
 }
 
-export function videoAvailable(): boolean {
+/** Video can be offered at all: the browser can play it and this session's budget isn't used up. */
+export function videoPossible(): boolean {
   const b = readBudget();
-  return !b.off && b.usedMs < VIDEO_MAX_MS && videoNetworkOk() && mediaSourceSupported();
+  return !b.off && b.usedMs < VIDEO_MAX_MS && mediaSourceSupported();
+}
+
+/** Video by default: possible, and the connection looks fast enough. */
+export function videoAvailable(): boolean {
+  return videoPossible() && videoNetworkOk();
 }
 
 /** Voice only for the rest of this browser session. */

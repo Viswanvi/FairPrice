@@ -39,7 +39,7 @@ import {
   type AlexHandlers,
   type PresentResult,
 } from "./alex";
-import { addVideoMs, noteVideoFailure, startVideoTask, takeVideoTurn, videoAvailable, videoTurnsLeft } from "./avatar";
+import { addVideoMs, noteVideoFailure, startVideoTask, takeVideoTurn, videoAvailable, videoPossible, videoTurnsLeft } from "./avatar";
 import { CHECKOUT_RESULT_EVENT } from "./events";
 import { highlight, performActions } from "./page-actions";
 
@@ -69,12 +69,30 @@ function loadOutput(): Output {
   }
 }
 
+/** The visitor tapped Video in this tab (rather than it being the default). Memory backs up storage. */
+let videoPickedHere = false;
+
 function saveOutput(o: Output): void {
+  videoPickedHere = o === "video";
   try {
     sessionStorage.setItem(OUTPUT_KEY, o);
   } catch {
     /* storage unavailable: the choice lasts until reload */
   }
+}
+
+function videoChosen(): boolean {
+  if (videoPickedHere) return true;
+  try {
+    return sessionStorage.getItem(OUTPUT_KEY) === "video";
+  } catch {
+    return false;
+  }
+}
+
+/** Video may be used now: when the visitor picked it, on any network; by default, only on a fast one. */
+function videoOk(): boolean {
+  return videoChosen() ? videoPossible() : videoAvailable();
 }
 
 type Turn = { role: "user" | "assistant"; text: string; products?: ProductCard[] };
@@ -288,6 +306,8 @@ export function Assistant() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef(false);
   const outputRef = useRef(output);
+  /** The current task's expected turns, and whether it has had its video budget yet. */
+  const taskRef = useRef({ turns: 0, video: false });
   const micBlockedRef = useRef(false);
   const alexRef = useRef<AlexState>("off");
   /** Index of the bubble Alex / the visitor is currently speaking into (captions arrive in pieces). */
@@ -365,7 +385,9 @@ export function Assistant() {
 
   /** Start a task: video for its expected turns plus two (AVATAR_SPEC section 6). */
   const startTask = useCallback((expectedTurns: number) => {
-    if (outputRef.current === "video" && videoAvailable()) startVideoTask(expectedTurns);
+    const video = outputRef.current === "video" && videoOk();
+    taskRef.current = { turns: expectedTurns, video };
+    if (video) startVideoTask(expectedTurns);
   }, []);
 
   // ---- Alex ----
@@ -485,7 +507,7 @@ export function Assistant() {
           setNote(ui(langRef.current).alexLost);
         },
       };
-      const audioOnly = outputRef.current !== "video" || !videoAvailable() || videoTurnsLeft() <= 0;
+      const audioOnly = outputRef.current !== "video" || !videoOk() || videoTurnsLeft() <= 0;
       try {
         const { mic } = await connectAlex({ lang: langRef.current, audioOnly, resume }, handlers);
         setAlexMuted(outputRef.current === "text");
@@ -1041,9 +1063,15 @@ export function Assistant() {
     saveOutput(o);
     voiceAdapter.stop();
     setAlexMuted(o === "text");
+    // A task that began as voice (a slow-looking connection) gets its video budget once, when the
+    // visitor picks Video; choosing it again doesn't refill the budget.
+    if (o === "video" && !taskRef.current.video && videoOk()) {
+      taskRef.current.video = true;
+      startVideoTask(taskRef.current.turns);
+    }
     if (alexRef.current !== "off") {
-      // Back to video only while this task's budget lasts; choosing it doesn't refill the budget.
-      const wantVideo = o === "video" && videoAvailable() && videoTurnsLeft() > 0;
+      // Back to video only while this task's budget lasts.
+      const wantVideo = o === "video" && videoOk() && videoTurnsLeft() > 0;
       void setAlexAudioOnly(!wantVideo);
       if (!wantVideo) setVideoMode(false);
     }
@@ -1215,7 +1243,7 @@ export function Assistant() {
           <div className="flex items-center gap-2 border-b border-line px-4 py-1.5">
             <span className="flex-1 text-xs text-ink-3">{text.speakWith}</span>
             <div role="radiogroup" aria-label={text.speakWith} data-testid="assistant-output" className="flex rounded-lg border border-line-strong p-0.5 text-xs">
-              {(videoAvailable() ? (["video", "voice", "text"] as const) : (["voice", "text"] as const)).map((o) => {
+              {(videoPossible() ? (["video", "voice", "text"] as const) : (["voice", "text"] as const)).map((o) => {
                 const current = output === "text" ? "text" : video ? "video" : "voice";
                 return (
                   <button

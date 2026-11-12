@@ -541,6 +541,23 @@ test("on a slow connection Alex starts as voice only (no video is asked for)", a
   expect(alex.setup[0]).toMatchObject({ modality: "AUDIO" });
 });
 
+test("on a slow connection the visitor can still pick Video, and Alex switches to it", async ({ page }) => {
+  await connection(page, SLOW);
+  const alex = await fakeAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const output = page.getByTestId("assistant-output");
+  await expect(page.getByTestId("assistant-panel")).toContainText(line("T1"));
+  await expect(output.getByRole("radio", { name: "Voice" })).toHaveAttribute("aria-checked", "true");
+  expect(alex.setup[0]).toMatchObject({ modality: "AUDIO" });
+
+  await output.getByRole("radio", { name: "Video" }).click();
+  await expect.poll(() => alex.setup.length).toBeGreaterThan(1);
+  expect(alex.setup.at(-1)?.modality).toBeUndefined(); // video asked for
+  await expect(page.getByTestId("assistant-avatar")).toBeVisible();
+  await expect(output.getByRole("radio", { name: "Video" })).toHaveAttribute("aria-checked", "true");
+});
+
 test("if Alex can't connect, the tour still runs with the browser voice (or text)", async ({ page }) => {
   await connection(page, FAST);
   await page.routeWebSocket("**/ws/alex", (ws) => ws.close());
