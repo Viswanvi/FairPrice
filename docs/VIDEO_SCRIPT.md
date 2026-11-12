@@ -27,6 +27,12 @@ version**, then **Approve version 2** on camera. The buyer scenes then use versi
       appear only as dots.
 - [ ] **Hide notifications,** and zoom the browser to 110–125% so text is readable.
 - [ ] **Have the sandbox buyer logins ready** for India and the US.
+- [ ] **Alex scenes: use Chrome on a fast connection.** In the console (F12),
+      `navigator.connection.downlink` must be 5 or more, or Alex speaks without video. Allow the
+      microphone when asked.
+- [ ] **Open a fresh tab for each Alex take.** Video is limited to 5 minutes per tab, and the
+      welcome card (with **Take the 3-minute tour**) shows only on a tab's first visit.
+- [ ] **Cut Alex's waits.** He takes a few seconds to connect and to answer.
 
 ---
 
@@ -34,15 +40,16 @@ version**, then **Approve version 2** on camera. The buyer scenes then use versi
 
 | Time | Scene | On screen (what to click) | Voiceover |
 | --- | --- | --- | --- |
-| 0:00–0:20 | **The problem** | Title card, then the bootcamp's product page showing **$99**. | "Digital products are priced for rich countries. A ninety-nine-dollar course is out of reach for most learners in India or Brazil, and creators lose those sales." |
+| 0:00–0:20 | **Alex opens the demo** | Fresh tab on the home page → tap **Take the 3-minute tour** → Alex appears on video and says the first tour line. Stop the tour after it. | *No voiceover: Alex's own line is the opening.* "Hi! I'm the FairPrice guide. Digital products are usually priced for rich countries, so most of the world can't afford them…" |
 | 0:20–0:40 | **Seller setup** | `/seller` → sign in → open *Full-Stack JavaScript Bootcamp* → **Analyze audience**. Cut the wait; show the region chips and reasons. | "FairPrice reads the product and works out who actually buys it: individual learners, strongest in South Asia and Latin America." *(match what the AI actually says)* |
 | 0:40–1:00 | **AI versus formula** | **Generate fair prices** (cut the wait) → toggle **Formula vs AI** → point at the highlighted rows. Then cut to `/benchmark` → **US tax guide**. | "A formula discounts everything. The AI discounts where real buyers are. A US tax guide stays near full price abroad; a coding course gets a deep discount in India." |
 | 1:00–1:10 | **Approve** | **Approve version 1** → *Your product page is live* card with version and fingerprint. | "The seller approves. Prices are locked, versioned and fingerprinted. AI never touches checkout without that approval." |
 | 1:10–1:40 | **Fair purchase (India)** | Phone view, Incognito: `/p/demo-bootcamp?as=IN` (banner: simulating India). Show **[India $]**, press **सुनें (Listen)** for 3 seconds of Hindi, then **Pay with PayPal** → log in as the **India** buyer → **Complete Purchase** → *Payment complete*. | "A buyer in India sees a fair price, with the explanation in Hindi, and pays with PayPal. Before any money moves, PayPal confirms the account is Indian." |
 | 1:40–2:05 | **VPN caught** | New Incognito window, same `?as=IN` link → pay as the **US** buyer → result: *A different price applies… You have not been charged.* with the offer to pay [US $]. | "Now a US buyer pretends to be in India. PayPal reports a US account, so FairPrice cancels the payment. Nobody is charged a wrong amount, and the buyer is offered the right price." |
 | 2:05–2:20 | **Traveler** | New Incognito window: `/p/demo-bootcamp?as=US` shows **[US $]** → pay as the **India** buyer → *You were charged [India $], the fair price for your country, not [US $].* | "It works both ways. An Indian buyer travelling in the US approves [US $], but is charged only [India $]." |
-| 2:20–2:35 | **Trust** | `/seller` → the bootcamp → **Orders** tab: three orders with decisions *Match / Country mismatch / Traveler*, the PayPal order, authorization and capture IDs, and the table version. | "Every decision is recorded with its PayPal IDs and the exact price version it used." |
-| 2:35–2:50 | **Vision** | Title card: *FairPrice — fair prices, verified by PayPal*, plus the live link and the GitHub link. Optional: one line about the voice assistant. | "PayPal's verified accounts can become the trust layer for fair global pricing, and a reason for millions of priced-out buyers to join PayPal. Next: a voice assistant that helps people buy and sell in their own language." |
+| 2:20–2:30 | **Trust** | `/seller` → the bootcamp → **Orders** tab: three orders with decisions *Match / Country mismatch / Traveler*, the PayPal order, authorization and capture IDs, and the table version. | "Every decision is recorded with its PayPal IDs and the exact price version it used." |
+| 2:30–2:42 | **Alex in your language** | Fresh tab, `?as=IN` home page → **Talk to Alex** → say in Hindi *"मुझे स्टार्टअप के लिए Figma टेम्पलेट चाहिए"* → Alex answers in Hindi with the price and opens the product page. | "And anyone can just ask Alex, in their own language. He finds the product and its fair price, but never pays or approves anything himself." |
+| 2:42–2:50 | **Vision** | Title card: *FairPrice — fair prices, verified by PayPal*, plus the live link and the GitHub link. | "PayPal's verified accounts can become the trust layer for fair global pricing, and a reason for millions of priced-out buyers to join PayPal." |
 
 ---
 

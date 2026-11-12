@@ -55,9 +55,14 @@ where the buyer's account is registered before any money is captured.
      **Nobody is overcharged.**
    - **VPN / mismatch:** a US account pretending to be in India is **not charged at all**. The
      authorization is voided, and the buyer is offered the US price.
-7. **The buyer gets help in their own language.** A **Listen** button explains the price and the
+7. **Alex, an AI video guide, shows people around.** On any page, a visitor can take a 3-minute
+   guided tour or just talk to Alex. Alex is a live, lip-synced video avatar that answers in the
+   visitor's language. He finds products and says their price for the visitor's country, opens
+   pages, fills in a seller's product form, and points to the PayPal or Approve button. He never
+   pays, approves or changes a price himself.
+8. **The buyer gets help in their own language.** A **Listen** button explains the price and the
    result in Hindi, Portuguese or Spanish, read aloud by the browser.
-8. **The seller sees every decision.** A live orders dashboard shows each order with its PayPal
+9. **The seller sees every decision.** A live orders dashboard shows each order with its PayPal
    order, authorization and capture IDs.
 
 ## How we use PayPal
@@ -93,6 +98,19 @@ structured outputs checked by Zod.
 - **A validator in code** checks every price; rule breaks get one re-ask, and anything still
   failing falls back to the formula.
 - **The result is a draft** until the seller approves it, and approval re-checks it.
+
+**Alex, the guide:** Gemini Live on Vertex AI, through Google's Gen AI SDK, gives Alex his video
+avatar, voice and ears. A small WebSocket bridge on our server keeps the Google key off the
+browser.
+- **Same safe tools as the rest of FairPrice:** search, open a page, fill a form, press a setup
+  button, point at something. None of them can pay, approve or edit a price.
+- **Prices only from the server:** every price Alex says comes from a tool that reads the
+  approved table for the visitor's country. A check flags any number he says that no tool gave
+  him.
+- **The tour is fixed, reviewed text:** Alex reads each tour line word for word.
+- **Fallbacks:** video only on a fast connection, otherwise voice, then text. If Gemini is
+  unreachable, a Claude-based guide with the browser's voice takes over. Checkout never depends
+  on any of it.
 
 **Benchmark: formula vs AI.** We compared the two on five invented products (the `/benchmark`
 page):
@@ -133,14 +151,16 @@ FairPrice differs in two ways:
 - **Data:** PostgreSQL through Prisma; Zod for every external input and every AI output.
 - **Grids:** AG Grid Community.
 - **PayPal:** the REST API, called from the server only.
-- **AI:** the Anthropic SDK.
-- **Hosting:** Render.
+- **AI:** the Anthropic SDK for pricing; Google's Gen AI SDK (Gemini Live on Vertex AI) for Alex.
+- **Hosting:** Render, with a small custom Node server so Alex's WebSocket and Next.js share one
+  port.
 
 **Eligibility rules:** `decide()` is a pure function with no database, network or clock access.
 A lint rule enforces that.
 
-**Tests:** 410 unit tests, 44 database integration tests and 26 Playwright browser tests (desktop
-and phone), plus a scripted end-to-end run against the real PayPal sandbox.
+**Tests:** 456 unit tests, 44 database integration tests and 56 Playwright browser tests (desktop
+and phone, with Alex's connection mocked), plus a scripted end-to-end run against the real PayPal
+sandbox.
 
 ## Sponsor tools
 
@@ -161,6 +181,9 @@ and phone), plus a scripted end-to-end run against the real PayPal sandbox.
   order, so duplicates and late events are harmless.
 - **The AI's first price table often broke a rule** (7 of 15 stability runs). A single re-ask
   listing the broken rules fixed every one; any row that still fails falls back to the formula.
+- **Keeping a live avatar on script.** Alex reads tour lines word for word, gets prices only from
+  server tools, and his spoken numbers are checked. Pausing to save cost after 20 seconds of
+  silence also needed care: an early version could freeze while reconnecting.
 
 ## Accomplishments that we're proud of
 
@@ -190,23 +213,25 @@ and phone), plus a scripted end-to-end run against the real PayPal sandbox.
 - **Card payments pay the standard price,** because fair prices need a PayPal account.
 - **The free Render plan sleeps when idle,** so the first visit can take about a minute.
 - **It's a demo:** one seller account, and no rate limiting on sign-in.
+- **Alex's video needs a fast connection** (Chrome reporting 4G and at least 5 Mbps); otherwise he
+  speaks without video. Talking to him needs a microphone; typing always works. Video is limited
+  to 5 minutes per browser tab to keep costs down.
+- **The tour lines are written in English and Hindi.** In other languages Alex translates them
+  live.
 
 ## What's next
 
-- **Voice assistant (prototype built).**
-  - A buyer or seller can just *talk* in English or Hindi. It searches products, opens the right
-    page, fills in a seller's product form, and points to the PayPal or Approve button.
-  - It never pays or approves anything itself.
-  - It's on a separate branch while a native speaker reviews the Hindi.
-- **More languages,** such as Tamil, Bengali and Indonesian, and local-currency display.
+- **More languages,** such as Tamil, Bengali and Indonesian, reviewed by native speakers, and
+  local-currency display.
 - **Production PayPal,** seller accounts, and real sales data to measure how fair prices change
   conversion.
 
 ## Built with
 
 `paypal` · `paypal-orders-api` · `paypal-js-sdk` · `anthropic` · `claude` · `claude-code` ·
-`nextjs` · `react` · `typescript` · `tailwindcss` · `postgresql` · `prisma` · `zod` ·
-`ag-grid` · `render` · `vitest` · `playwright` · `world-bank-data`
+`gemini-live` · `vertex-ai` · `websockets` · `nextjs` · `react` · `typescript` · `tailwindcss` ·
+`postgresql` · `prisma` · `zod` · `ag-grid` · `render` · `vitest` · `playwright` ·
+`world-bank-data`
 
 ---
 
@@ -226,6 +251,10 @@ is involved. The first visit can take about a minute to wake up.
 `[seller password]`.
 
 **Try these:**
+0. **Meet Alex.** Open the home page in Chrome and tap **Take the 3-minute tour**. Alex walks you
+   through the whole app on video. Say or type "skip" to move on, or "stop" to end. To talk to
+   him instead, tap **Talk to Alex** and allow the microphone; any language works. On a slow
+   connection he speaks without video.
 1. **Fair price.** Open https://fairprice-edof.onrender.com/p/bench-design-templates?as=IN, which
    simulates a visitor from India (a banner says so). It shows **$16** instead of $39. Pay as the
    **India** buyer. Expected: "You paid $16, the fair price for India."

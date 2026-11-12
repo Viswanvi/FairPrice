@@ -174,6 +174,11 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Last session summary
 
+- 2026-11-12 (release prep, branch `release-avatar`, local only): `avatar` merged into `main`'s history (only PROGRESS.md conflicted; both sides kept). DEVPOST.md and VIDEO_SCRIPT.md now feature Alex (opening scene = Alex's first tour line; a Hindi "talk to Alex" scene before the end card; Alex checklist items; judges' step 0).
+  - **Checks:** typecheck, lint, 456 unit tests, production build; 44 DB tests and 56 Playwright tests run against a throwaway local Postgres (port 5433, deleted afterwards), not the live DB.
+  - **Playwright: 54 passed, 2 failed.** "a line cut off by noise…" passed on rerun (flaky). **'"skip" by voice: one step only…' fails every time, also with Valeny's original `alex.ts`** (so not caused by today's fixes): line 2 starts more than 3 s after the visitor's "skip" (page load), so Gemini's stray turn end counts as a real interruption and the line is repeated. In real use that means at most one repeated line, not a freeze. Left for Valeny; the test was not changed.
+  - **Not done:** push `release-avatar` to `main` (needs the user's OK and the Google keys on Render first).
+
 - 2026-11-12 (avatar test by Claude Code, production build, live DB read-only): two fixes.
   - **Tour skipped the seller sign-in (T7) when signed out:** the address reads "/seller" for ~36 ms before the redirect to /seller/sign-in, and the tour took that as "signed in". Now `sellerArea()` (`lib/assistant/tour.ts`, unit-tested) needs the product list's `seller_home` marker; if neither page shows, or the visitor never signs in, the tour skips to T8.
   - **Tour froze after Alex's 20 s silence pause** (e.g. T4 waiting for a PayPal payment): the watch timer paused Alex again while he was reconnecting, orphaning the reconnect, so the tour waited forever and Skip/Stop did nothing. `alex.ts`: no watch checks until Gemini is ready, waking counts as activity, and a replaced or timed-out socket always fails instead of hanging.
