@@ -1,3 +1,24 @@
+import { test as base, expect } from "@playwright/test";
+
+/**
+ * Pages open with the voice assistant's welcome card on a visitor's first visit. Most specs
+ * test other things, so this `test` marks the welcome as already seen; assistant.spec.ts uses
+ * Playwright's plain `test` to see it.
+ */
+export const test = base.extend({
+  page: async ({ page }, provide) => {
+    await page.addInitScript(() => {
+      try {
+        sessionStorage.setItem("fp_assistant_welcome_seen", "1");
+      } catch {
+        /* storage blocked: the card shows, which the tests don't depend on */
+      }
+    });
+    await provide(page);
+  },
+});
+export { expect };
+
 /**
  * Data the browser tests need, written straight to the database (no AI, no PayPal).
  * Every product here starts with "e2e-" and is removed by global-teardown.ts.

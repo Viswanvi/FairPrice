@@ -1,9 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { FILL_PRODUCT_FORM_EVENT } from "../../../_components/assistant/events";
 import { Button, Card, ErrorNote, Field, inputClass, Segmented, Switch } from "../../../_components/ui";
+import type { ProductFormFields } from "@/lib/assistant/schema";
 import { formatUsd, parseDollarsToCents } from "@/lib/seller/format";
+
+const amount = (usd: number) => String(Math.round(usd * 100) / 100);
 
 type Goal = "revenue" | "reach";
 
@@ -19,6 +23,21 @@ export function ProductForm() {
   const [requirePaypal, setRequirePaypal] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The voice assistant fills in what the seller told it; the seller still checks and continues.
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const f = (event as CustomEvent<ProductFormFields>).detail;
+      if (f.title !== undefined) setTitle(f.title);
+      if (f.description !== undefined) setDescription(f.description);
+      if (f.baseUsd !== undefined) setBase(amount(f.baseUsd));
+      if (f.minUsd !== undefined) setMin(amount(f.minUsd));
+      if (f.maxDiscountPct !== undefined) setMaxDiscount(String(f.maxDiscountPct));
+      if (f.goal !== undefined) setGoal(f.goal);
+    };
+    window.addEventListener(FILL_PRODUCT_FORM_EVENT, fill);
+    return () => window.removeEventListener(FILL_PRODUCT_FORM_EVENT, fill);
+  }, []);
 
   const baseCents = parseDollarsToCents(base);
   const minCents = parseDollarsToCents(min);
@@ -42,6 +61,7 @@ export function ProductForm() {
 
   return (
     <form
+      data-assistant-form="product"
       className="flex flex-col gap-5"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -137,7 +157,7 @@ export function ProductForm() {
 
       {error && <ErrorNote>{error}</ErrorNote>}
       <div className="flex justify-end">
-        <Button type="submit" loading={busy} disabled={!valid}>
+        <Button type="submit" loading={busy} disabled={!valid} data-assistant="continue_setup">
           Continue
         </Button>
       </div>

@@ -24,10 +24,45 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Decisions (newest first)
 
-- **Submission = `main` (tag `submission-safe`, commit `55ab707`), without the voice assistant** (user's decision, 2026-11-11 night).
+- 2026-11-12 (avatar branch, decided by Vinoth): **Alex replaces the guide, with Gemini as the brain** (the GCS setup), started only from a button; no language switch on screen. This supersedes the spec's "avatar only reads the assistant's reply". Kept from the spec: the same rules and tools as the Claude assistant (`lib/alex/gemini.ts` reuses prompt.ts and tools.ts, fetched by the bridge from an internal route), prices only from server tools, network check, n+2 video turns, 5-minute cap, 20 s silence pause, video/voice/text switch, the fixed tour lines. Added: `server.mjs` custom server + `lib/alex/bridge.mjs` WebSocket bridge at /ws/alex (Next routes can't hold the socket); same-origin check, per-IP session limit, 20-minute session cap; the faithfulness check now reads spelled-out numbers ("sixteen") via `lib/avatar/numbers.mjs`. If Alex can't start, the earlier Claude + browser-voice guide takes over. The per-line reader (`/api/avatar/speak`) was removed.
+
+- 2026-11-12 (avatar branch): **Video avatar = Gemini Live on Vertex AI, one short session per spoken turn.** `POST /api/avatar/speak` opens the session on the server (key stays there), sends only FairPrice's text with a "read exactly" instruction and no tools, and streams fragmented MP4 back as NDJSON; the browser plays it with Media Source Extensions (ported from the GCS "Alex" player). Chosen over a WebSocket bridge (needs a custom Next server and a Render start-command change) and over ephemeral browser tokens (Gemini Developer API only; the avatar needs Vertex). Nothing streams while silent, so the spec's "pause after 20 s silence" and "one stream at a time" hold by construction. Latency: about 2 s to connect, 4–5 s to first video.
+- 2026-11-12: **Faithfulness check.** Gemini's own transcript of each turn must contain no number the text didn't (`lib/avatar/faithful.ts`); otherwise video is off for the visit. One failed video turn falls back to voice for that turn; a second turns video off (Gemini occasionally drops a session with 1011).
+- 2026-11-12: **Tour lines are fixed text in English and Hindi** (`lib/assistant/tour.ts`); a test checks every Hindi line has the same numbers as the English. Talk mode accepts any language code (schema + prompt widened; money rules unchanged).
+
+- **Submission = `main` (tag `submission-safe`, commit `55ab707`), without the voice assistant** (user's decision, 2026-11-11 night). *Revisited 2026-11-12: the avatar version is being prepared on branch `release-avatar`; it replaces `main` only with the user's OK, and `submission-safe` stays the fallback.*
   - **What happened:** a voice assistant that guides buyers and sellers in English and Hindi was built and tested on branch `voice-agent` (pushed to GitHub, not merged). Its PROGRESS entry is on that branch.
   - **Why it's out:** it adds risk and needs a native Hindi review, and Thursday is for the video and Devpost. It can be mentioned as "what's next".
   - **What stays:** `main` keeps the **Listen** button (Hindi, Portuguese and Spanish explanations of the price and result).
+
+- **Voice assistant (branch `voice-agent`, user-approved plan, 2026-11-11).** `main` stays the safe submission, tagged `submission-safe`. It is merged only if the assistant is ready by **Thursday 4 PM IST**; otherwise the safe build is submitted.
+  - **Scope (user's choices):**
+    - The assistant is an *action guide*, not a Q&A bot.
+    - English and Hindi only for now.
+    - Free browser speech only (no paid speech service).
+    - The language is chosen by the tap the browser requires anyway (welcome card: Hindi first for Hindi browsers or the `?as=IN` demo). It switches when the visitor writes or speaks the other language (`detectLang`, word-based so Hinglish counts as Hindi).
+  - **Server:** `POST /api/assistant` (`lib/assistant/*`).
+    - **Model and speed:** Claude via `AI_MODEL` at effort `low`, with a manual tool loop of ≤ 4 calls; the last call uses `tool_choice: none`, so there is always a reply. The stable system prompt and tools are cached. Fallbacks are `"default"`.
+    - **App context:** sent as a mid-conversation **system** message (operator channel).
+    - **Tools (strict schemas):** `search_products`, `open_product`, `go_to`, `list_my_products`, `fill_new_product_form`, `press_button` (never Approve), `point_to`.
+    - **Prices:** always computed by `priceForCountry` from the APPROVED table. Seller text is wrapped in `<product_data>`.
+    - **Seller tools:** with no session, they open sign-in and highlight the password field.
+    - **Limits:** rate limit of 30 requests per 10 minutes per IP (in memory); input validated with Zod.
+    - **Rule change (user-approved):** CLAUDE.md's "the AI has no tools" still holds for the pricing AI. The assistant gets only these navigation and form tools, none of which move money or approve prices.
+  - **Client:** `app/_components/assistant/*`, mounted in the root layout so the conversation persists across pages (also kept in sessionStorage).
+    - **Speech:** recognition in `en-IN`/`hi-IN` with interim text; a "One moment" filler after 1.2 s in voice mode; hands-free listening again after each reply.
+    - **Actions:** pages opt in with `data-assistant` (pressable) and `data-assistant-highlight` (highlight only; Approve is highlight-only). The product form listens for a fill event.
+    - **Results:** the payment result is spoken through `CHECKOUT_RESULT_EVENT` and `resultSpeech`.
+    - **Shared code:** `app/_components/speech.ts` (also used by the Listen buttons).
+  - **Checked:**
+    - Real API smoke tests: English search 9.7 s cold / ~5 s warm; Hindi reply; seller sign-in routing.
+    - In the browser: welcome card → English greeting spoken → search → product card → "open it" navigated to the product page; Hindi search answered honestly (the ebook isn't on sale); seller sign-in → form filled by the assistant → it pressed Continue (product created) and Analyze audience (the analysis finished). The test product was deleted afterwards.
+    - The in-app browser blocks microphones, so the assistant showed its "microphone is blocked" note. **Real microphone input is untested until the user tries it in Chrome.**
+    - One transient AI error was seen; the route now logs the status code.
+  - **Tests:** 24 assistant unit tests; 4 Playwright tests (route-mocked: no AI cost). The existing specs use a fixture that marks the welcome card as seen.
+  - **Fixed during build:**
+    - Zod 4 runs `.refine` after `.min()` fails, so an empty conversation threw a 500. Guarded and tested.
+    - `.env` had lost the `\$` escape in the seller password (local sign-in failed). Restored.
 
 - Native-language voice help on the buyer page (user request, 2026-11-11, before the Wednesday-night freeze). The plan was approved with Hindi, Portuguese (Brazil) and Spanish, covering both the price and the result. The user also ticked "Something else" without naming a language, so that is still to be asked.
   - **Sentences:** `lib/checkout/voice.ts` holds fixed, written translations of the page's English copy. There is no AI at runtime.
@@ -138,6 +173,23 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 
 ## Last session summary
+
+- 2026-11-12 (avatar test by Claude Code, production build, live DB read-only): two fixes.
+  - **Tour skipped the seller sign-in (T7) when signed out:** the address reads "/seller" for ~36 ms before the redirect to /seller/sign-in, and the tour took that as "signed in". Now `sellerArea()` (`lib/assistant/tour.ts`, unit-tested) needs the product list's `seller_home` marker; if neither page shows, or the visitor never signs in, the tour skips to T8.
+  - **Tour froze after Alex's 20 s silence pause** (e.g. T4 waiting for a PayPal payment): the watch timer paused Alex again while he was reconnecting, orphaning the reconnect, so the tour waited forever and Skip/Stop did nothing. `alex.ts`: no watch checks until Gemini is ready, waking counts as activity, and a replaced or timed-out socket always fails instead of hanging.
+  - **Verified in the browser (video forced on, mic blocked):** full tour on video with two >20 s waits, signed out (stops at T7) and signed in (T7a–T7d), tap-to-wake in Talk mode. Checks: typecheck, lint, 456 unit tests. Playwright not run (its setup writes to the live DB).
+  - **Notes:** the test browser reported 1.25 Mbps, so video needed a forced fast connection; the tour uses ~3.5 of the 5 video minutes per tab; reopening the panel restarts Alex in voice until Video is chosen again.
+
+- 2026-11-12 (Alex fixes): ported GCS hold (Pause: mic sends silence, nothing played or captioned until Resume), dropping the rest of a stopped turn, and quiet between tour lines. Fixed a second (browser) voice after skip/stop/pause: the browser voice now speaks only when Alex is really off. "pause"/"wait" (and Hindi) by voice; a Pause/Resume button in Talk mode. Checks: 455 unit + 39 Playwright tests pass.
+
+- 2026-11-12 (later): Alex (Gemini brain) built and tried: talk + buy flow in English and Hindi with live video, server prices, product cards, "walk me through the demo", tour T1–T4 with Alex saying the lines. Production build + `node server.mjs --prod` checked. Checks: typecheck, lint, 455 unit + 37 Playwright tests pass. Not done: Alex with a real microphone (mic is blocked in the test browser), a sandbox purchase with Alex reading the result, the recording. Render: start command `npm start` now runs server.mjs; set GOOGLE_API_KEY and GOOGLE_CLOUD_PROJECT there before Alex can work on the hosted site.
+
+- 2026-11-12 (avatar branch, not on main): video avatar + guided tour built per docs/AVATAR_SPEC.md.
+  - **Checks:** typecheck and lint pass; 449 unit tests and 34 Playwright tests pass (avatar mocked in Playwright).
+  - **Browser:** tour T1–T5 played with live avatar video; skip (typed) and Stop work; Hindi Talk turn read Claude's reply ("16 डॉलर") as video; Hindi T3 line read with numbers intact.
+  - **Not done yet:** full tour start to finish in the user's Chrome, a real sandbox purchase with the avatar on the page, the "Slow 4G" DevTools check, the screen recording.
+  - **Local setup note:** Grid & Grain was approved in the LOCAL database only, for the tour's buyer steps.
+  - **Later the same day:** AvatarAdapter/VoiceAdapter (`adapters.ts`), a Video/Voice/Text switch (rule 7), "skip"/"stop" heard at any step (a command the guide's own line says is ignored while it plays), "walk me through the demo" starts the tour, the avatar's last frame stays between turns, and first-time buyer guidance in the prompt (2026-11-12.2). Root cause of the earlier "cut off after a second" bug: a momentary visibilitychange "hidden" (e.g. a permission bubble) stopped the avatar; it now stops only if the tab stays hidden 1.5 s. Checks: 451 unit + 36 Playwright tests, typecheck, lint pass.
 
 - 2026-11-11 (night): decided to submit `main` as is. The voice assistant stays on branch `voice-agent`. Next, Phase 15:
   - **Rehearse** the demo.

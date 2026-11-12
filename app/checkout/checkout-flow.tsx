@@ -189,7 +189,11 @@ function Flow({ productId, as, resumeOrderId }: { productId: string | null; as: 
           )}
         </ErrorNote>
       )}
-      {productId && <PayButton createOrder={buy} {...handlers} />}
+      {productId && (
+        <div data-assistant-highlight="paypal_button">
+          <PayButton createOrder={buy} {...handlers} />
+        </div>
+      )}
     </div>
   );
 }

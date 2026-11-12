@@ -73,7 +73,7 @@ export default async function BuyerPage({ params, searchParams }: PageProps<"/p/
           {description && <p className="line-clamp-4 text-sm leading-relaxed text-ink-2">{description}</p>}
         </div>
 
-        <div className="flex flex-col gap-1 rounded-xl bg-surface-2 p-4">
+        <div className="flex flex-col gap-1 rounded-xl bg-surface-2 p-4" data-assistant-highlight="price_box">
           <div className="flex items-baseline gap-3">
             <span className="text-4xl font-semibold tracking-tight tabular-nums text-ink">{formatUsd(quote.priceCents)}</span>
             {headline.showStandard && (

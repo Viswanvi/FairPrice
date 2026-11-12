@@ -154,7 +154,8 @@ export function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (v: T) => void;
-  options: { value: T; label: string }[];
+  /** marker: a data-assistant-highlight name, so the guide's tour can point at this option. */
+  options: { value: T; label: string; marker?: string }[];
   label: string;
 }) {
   return (
@@ -164,6 +165,7 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           role="radio"
+          data-assistant-highlight={o.marker}
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(

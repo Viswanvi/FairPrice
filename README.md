@@ -36,6 +36,40 @@ pay a single US price, and every pricing decision is recorded against its PayPal
    - if the price for the account's country is higher (VPN or mismatch), the order is voided
      and the buyer is offered the right price. **Nobody is charged a wrong amount.**
 
+## Alex, the AI guide (video avatar)
+
+A small card offers **▶ Take the 3-minute tour**, **🎤 Talk to Alex** or **Explore on my own**.
+Nothing starts until the visitor taps. Alex is a live video avatar (Gemini Live on Vertex AI, the
+same setup as our GCS "Alex"): he hears the visitor through the microphone and answers in whatever
+language they speak. There is no language switch on screen.
+
+- **Buyers:** "I need a Figma template". Alex finds the best match, says what it is and its price
+  for the visitor, opens the page and points to the PayPal button. After payment, he reads the
+  result card aloud.
+- **Sellers:** "I want to sell my ebook". Sign-in is typed (Alex never hears the password); Alex
+  fills in the new-product form, presses **Continue**, **Analyze audience** and **Generate fair
+  prices**, and points to **Approve**, which only the seller presses.
+- **Tour:** fixed, reviewed lines (`lib/assistant/tour.ts`), in English or Hindi; "walk me through
+  the demo" starts it too. Pause, skip and stop by button, typing or voice.
+
+**How it works:**
+- `server.mjs` runs Next.js plus a WebSocket bridge (`lib/alex/bridge.mjs`) at `/ws/alex`: mic
+  audio in, avatar video and captions out. The Google key stays on the server.
+- **Brain:** Gemini, with the **same rules and tools** as the earlier Claude assistant
+  (`lib/alex/gemini.ts` reuses `lib/assistant/prompt.ts` and `tools.ts`). The bridge fetches
+  them from an internal route, so a browser can't change them.
+- **Prices** come only from the server's tools (the approved table). The bridge flags any number
+  Alex says that no tool, visitor or app text gave him, and the page then asks the visitor to check
+  the price shown.
+- **Cost and network:** video only on a fast connection (4g, ≥ 5 Mbps, no data saver), for the
+  turns a task needs plus two, at most 5 minutes per visit; then voice. Alex pauses after 20 s of
+  silence or when the tab is hidden, and continues the same conversation on the next tap.
+- **Video / Voice / Text** switch in the panel. If Alex can't start, the earlier guide takes over
+  (Claude via `POST /api/assistant`, browser voice). Checkout never depends on either.
+
+**What Alex can never do:** pay; approve or edit prices; handle passwords; state a price the
+server didn't compute from the approved table.
+
 ## Try it with sandbox buyers
 
 **Seller sign-in:** go to `/seller`. On the hosted demo, the password is in the Devpost

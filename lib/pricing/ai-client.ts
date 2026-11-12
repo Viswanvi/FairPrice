@@ -7,9 +7,13 @@ import { AiError, type AiDeps } from "./ai";
 /** The real Anthropic client for API routes (server only; the key never reaches the browser). */
 let client: Anthropic | null = null;
 
-export function aiDeps(): AiDeps {
+export function anthropicClient(): Anthropic {
   client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 120_000 });
-  return { client, model: env.AI_MODEL };
+  return client;
+}
+
+export function aiDeps(): AiDeps {
+  return { client: anthropicClient(), model: env.AI_MODEL };
 }
 
 /** Map AI failures to friendly HTTP errors. */

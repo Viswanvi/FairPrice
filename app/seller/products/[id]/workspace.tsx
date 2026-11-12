@@ -82,6 +82,7 @@ export function Workspace({
             type="button"
             disabled={!s.enabled}
             aria-current={step === s.id ? "step" : undefined}
+            data-assistant-highlight={`step_${s.id}`}
             onClick={() => setStep(s.id)}
             className={cx(
               "flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",

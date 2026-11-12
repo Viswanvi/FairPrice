@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { E2E, sellerPassword } from "./fixtures";
+import type { Page } from "@playwright/test";
+import { E2E, expect, sellerPassword, test } from "./fixtures";
 
 // These tests change shared data (edit, approve), so they run in order.
 test.describe.configure({ mode: "serial" });
