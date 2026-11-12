@@ -257,6 +257,68 @@ test('"skip" by voice: one step only, no pause from Gemini\'s stray turn end, no
   await expect(page.getByTestId("assistant-panel")).not.toContainText("SCRIPT");
 });
 
+test("stray turn ends from Gemini don't finish a line early: no leaked caption, and the next skip still works", async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    const sayIt = (text: string, after = 0) =>
+      setTimeout(() => {
+        ws.send(JSON.stringify({ type: "alex_text", text }));
+        ws.send(JSON.stringify({ type: "turn_complete" }));
+      }, after);
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        const text = String(msg.text).slice(8);
+        scripts.push(text);
+        if (text === line("T4")) {
+          sayIt(text);
+          // The visitor says "Skip." at the waiting step.
+          setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: "Skip." })), 1500);
+        } else if (text === line("T5")) {
+          // Gemini first ends its own reply to "Skip." (interrupted, then turn_complete), THEN says the line.
+          ws.send(JSON.stringify({ type: "interrupted" }));
+          ws.send(JSON.stringify({ type: "turn_complete" }));
+          // He speaks it over several seconds, like the real Alex: a caption piece every half second,
+          // with one longer gap in the middle.
+          const words = text.split(" ");
+          words.forEach((w, i) => {
+            const at = 1500 + i * 120 + (i > words.length / 2 ? 2500 : 0);
+            setTimeout(() => ws.send(JSON.stringify({ type: "alex_text", text: (i ? " " : "") + w })), at);
+          });
+          const endAt = 1500 + words.length * 120 + 2700;
+          setTimeout(() => ws.send(JSON.stringify({ type: "turn_complete" })), endAt);
+          setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: "Skip, Alex." })), endAt + 2000);
+        } else if (text === line("T6")) {
+          ws.send(JSON.stringify({ type: "interrupted" }));
+          ws.send(JSON.stringify({ type: "turn_complete" }));
+          sayIt(text, 1000);
+        } else sayIt(text);
+      }
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const panel = page.getByTestId("assistant-panel");
+  test.setTimeout(120_000);
+  // While he is still saying T5, the tour must not treat the line as finished ("Waiting for you").
+  await expect.poll(() => scripts.includes(line("T5")), { timeout: 30_000 }).toBe(true);
+  await page.waitForTimeout(4000);
+  await expect(panel).not.toContainText("Waiting for you");
+  // T6 is said in full and the tour goes on to the seller part.
+  await expect.poll(() => scripts.includes(line("T6")), { timeout: 40_000 }).toBe(true);
+  await expect.poll(() => scripts.length, { timeout: 30_000 }).toBeGreaterThan(scripts.indexOf(line("T6")) + 1);
+  // Each line asked once, each shown once (no second bubble from a leaked caption).
+  for (const id of ["T4", "T5", "T6"]) {
+    expect(scripts.filter((s) => s === line(id)).length, id).toBe(1);
+    await expect(panel.getByText(line(id), { exact: true })).toHaveCount(1);
+  }
+  await expect(panel.getByText(/^(offered|reserves|cancelled|charged)/)).toHaveCount(0);
+  expect(await panel.locator("p.rounded-2xl").count()).toBeLessThanOrEqual(scripts.length + 2); // lines + the two "Skip" bubbles
+});
+
 test("a line cut off by noise (nobody spoke) simply starts again", async ({ page }) => {
   await connection(page, SLOW);
   const scripts: string[] = [];

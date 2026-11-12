@@ -231,6 +231,16 @@ async function waitUntil<T>(get: () => T | null, timeoutMs: number, signal?: Abo
   }
 }
 
+/** True when every word of `caption` appears, in order, in `line` (punctuation and case ignored). */
+function isPartOf(caption: string, line: string): boolean {
+  const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
+  const c = words(caption);
+  if (c.length === 0) return true;
+  const l = words(line);
+  for (let i = 0; i + c.length <= l.length; i++) if (c.every((w, j) => l[i + j] === w)) return true;
+  return false;
+}
+
 const marker = (name: string) => document.querySelector<HTMLElement>(`[data-assistant-highlight="${name}"]`);
 
 type TourState = { index: number; paused: boolean; waiting: boolean };
@@ -272,6 +282,8 @@ export function Assistant() {
   const pendingCardsRef = useRef<ProductCard[]>([]);
   /** True while Alex says a fixed line (tour, payment result). */
   const scriptingRef = useRef(false);
+  /** The last fixed line Alex said, until he says something of his own. */
+  const lastScriptRef = useRef("");
   const videoSinceRef = useRef(0);
   /** The latest beginTour, so callbacks memoised earlier can start the tour. */
   const beginTourRef = useRef<(l: AssistantLang) => void>(() => {});
@@ -345,6 +357,9 @@ export function Assistant() {
   /** Show a caption in the bubble for the current turn (Alex's words arrive in pieces). */
   const caption = useCallback((who: "alex" | "user", text: string) => {
     if (who === "alex" && scriptingRef.current) return;
+    // A late caption that is just part of the fixed line he was saying: that line is already shown.
+    if (who === "alex" && lastScriptRef.current && isPartOf(text, lastScriptRef.current)) return;
+    if (who === "alex") lastScriptRef.current = "";
     const ref = who === "alex" ? alexBubbleRef : userBubbleRef;
     // Taken out here, not inside the updater: React may run an updater twice in development.
     const cards = who === "alex" ? pendingCardsRef.current : [];
@@ -623,11 +638,11 @@ export function Assistant() {
         setStatus("speaking");
         // Alex's live captions of a fixed line would only repeat it: the bubble above shows it exactly.
         scriptingRef.current = true;
+        lastScriptRef.current = text;
         const r = await presentToAlex(text);
         scriptingRef.current = false;
         alexBubbleRef.current = null;
         setStatus("idle");
-        if (r === "done" && tourRef.current.step) quietAlexUntilNextLine();
         // Only when Alex is really gone does the browser voice say the line instead. A line the
         // visitor stopped (skip / stop / pause) stays stopped: no second voice.
         if (r !== "closed" || (alexRef.current as AlexState) !== "off") return r; // may have changed while he spoke
@@ -735,7 +750,11 @@ export function Assistant() {
             noiseRef.current = { step: step.id, count: spoke ? 0 : n };
             endStep(spoke || n > 2 ? "listen" : "repeat");
           }
-        } else if (said === "done") noiseRef.current = { step: "", count: 0 };
+        } else if (said === "done") {
+          noiseRef.current = { step: "", count: 0 };
+          // Between lines Alex stays quiet (GCS). Not at a waiting step: there he may answer the visitor.
+          if (!step.wait) quietAlexUntilNextLine();
+        }
         speakingLine = null;
         if (signal.aborted || !step.wait) return;
 

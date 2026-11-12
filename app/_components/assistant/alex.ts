@@ -72,7 +72,16 @@ const outputBlocked = () => outputHeld || dropTurn || quiet() || Date.now() < dr
 let turnActive = false;
 let alexLine = "";
 let userLine = "";
-let pending: { resolve: (r: PresentResult) => void } | null = null;
+/** The fixed line Alex is saying: how many words it has, and whether Gemini reported a turn end during it. */
+let pending: { resolve: (r: PresentResult) => void; words: number; sawEnd?: boolean } | null = null;
+const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+/**
+ * Has Alex actually said the pending line? Judged by his own transcript, not by timing: Gemini also
+ * ends turns that aren't the line (its reply to the visitor's "skip", a turn we cut in on), and
+ * those ends arrive around the same moment. At least half the line's words must have been heard.
+ */
+const lineSaid = () => !!pending && wordCount(spokenWords(alexLine)) >= Math.ceil(pending.words * 0.5);
+const lineStarted = () => wordCount(spokenWords(alexLine)) > 0;
 // A new SCRIPT cuts in on whatever Alex was still generating; that old turn's 'interrupted' /
 // 'turn_complete' arrive just after and must not end the new one.
 // ponytail: time window, track turn ids if Gemini ever exposes them
@@ -350,14 +359,17 @@ function onMessage(msg: { type: string; [k: string]: unknown }) {
       break;
     }
     case "interrupted":
-      silence();
       if (dropTurn) {
+        silence();
         dropTurn = false; // the cut-off turn is over
         endDroppedTurn();
         break;
       }
+      // A fixed line he hasn't begun saying can't have been talked over: this is another turn's end.
+      if (pending && !lineStarted()) break;
+      silence();
       setTimeout(unmute, 500);
-      if (isOldTurnEnd()) {
+      if (!pending && isOldTurnEnd()) {
         turnActive = false;
         alexLine = "";
       } else {
@@ -369,6 +381,12 @@ function onMessage(msg: { type: string; [k: string]: unknown }) {
       if (dropTurn) {
         dropTurn = false; // the rest of a stopped turn was dropped; Alex is quiet again
         endDroppedTurn();
+        break;
+      }
+      if (pending) {
+        // Done only if his transcript shows he said the line; otherwise it's another turn's end.
+        if (lineSaid()) endTurn("done", Math.round(playbackRemaining() * 1000));
+        else pending.sawEnd = true;
         break;
       }
       if (isOldTurnEnd()) {
@@ -472,6 +490,8 @@ function openSocket(): Promise<void> {
       }
       void reconnect();
     };
+    // Never hang: a socket that doesn't become ready in 12 s counts as failed.
+    setTimeout(() => !ready && ws === sock && (sock.close(), lost("timeout")), 12_000);
     sock.onopen = () =>
       sock.send(
         JSON.stringify({
@@ -634,10 +654,11 @@ export async function presentToAlex(line: string): Promise<PresentResult> {
   }
   dropTurn = false;
   turnActive = false;
+  alexLine = ""; // from here on, his transcript is this line's
   userLine = ""; // what they say from now on is a new utterance
   pending?.resolve("closed");
   return new Promise((resolve) => {
-    const mine = { resolve };
+    const mine: NonNullable<typeof pending> = { resolve, words: wordCount(line) };
     pending = mine;
     selfInterruptUntil = Date.now() + OLD_TURN_WINDOW_MS;
     lastActivity = Date.now();
@@ -646,10 +667,17 @@ export async function presentToAlex(line: string): Promise<PresentResult> {
     const sentAt = Date.now();
     const stall = setInterval(() => {
       if (pending !== mine) return clearInterval(stall);
-      if (Date.now() - Math.max(sentAt, lastActivity) > 10_000) {
+      // Quiet for a while: if he said part of it and a turn ended, take it as said (the transcript
+      // can run short); if he never said it, report it as cut off so the tour presents it again.
+      const quietFor = Date.now() - Math.max(sentAt, lastActivity);
+      const partlySaid = mine.sawEnd && lineStarted();
+      if (quietFor > 10_000) {
         clearInterval(stall);
-        pending = null;
-        resolve("interrupted");
+        if (partlySaid) endTurn("done", 0);
+        else {
+          pending = null;
+          resolve("interrupted");
+        }
       }
     }, 1000);
   });
