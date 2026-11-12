@@ -242,13 +242,12 @@ is involved. The first visit can take about a minute to wake up.
 
 **Sandbox buyer logins** (log in to PayPal with these when you pay):
 
-| Buyer | Email | Password |
-| --- | --- | --- |
-| India | `[email]` | `[password]` |
-| United States | `[email]` | `[password]` |
+- **India:** email `sb-lp1py53751330@personal.example.com`, password `k%|3y(YU`
+- **United States:** email `sb-1rs1y53849739@personal.example.com`, password `EG+pX0|d`
+- **Brazil:** email `sb-8lxa153700920@personal.example.com`, password `uUp)l4t&`
 
 **Seller sign-in:** go to https://fairprice-edof.onrender.com/seller and use the password
-`[seller password]`.
+`[type the seller password into Devpost directly; never into this file, which is public]`.
 
 **Try these:**
 0. **Meet Alex.** Open the home page in Chrome and tap **Take the 3-minute tour**. Alex walks you

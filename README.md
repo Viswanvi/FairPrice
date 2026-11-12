@@ -97,11 +97,9 @@ the numbers change to match.
 
 **Sandbox buyer logins** (sandbox accounts hold test money only):
 
-| Buyer | Email | Password |
-| --- | --- | --- |
-| India | `<added for judging>` | `<added for judging>` |
-| United States | `<added for judging>` | `<added for judging>` |
-| Brazil | `<added for judging>` | `<added for judging>` |
+- **India:** email `sb-lp1py53751330@personal.example.com`, password `k%|3y(YU`
+- **United States:** email `sb-1rs1y53849739@personal.example.com`, password `EG+pX0|d`
+- **Brazil:** email `sb-8lxa153700920@personal.example.com`, password `uUp)l4t&`
 
 You can also make your own buyers: [developer.paypal.com](https://developer.paypal.com) → Testing Tools →
 Sandbox Accounts → Create account (Personal, choose the country).
