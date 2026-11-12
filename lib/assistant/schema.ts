@@ -6,9 +6,11 @@ import { z } from "zod";
  * the safe setup buttons. It never pays, approves or edits prices, or touches passwords.
  */
 
+/** Languages with written UI text and a browser voice preset; any other language code also works. */
 export const ASSISTANT_LANGS = ["en", "hi"] as const;
-export const assistantLangSchema = z.enum(ASSISTANT_LANGS);
-export type AssistantLang = z.infer<typeof assistantLangSchema>;
+/** A language code such as "en", "hi", "es" or "pt-BR" (AVATAR_SPEC section 7: any language). */
+export const assistantLangSchema = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/, { error: "lang must be a language code" });
+export type AssistantLang = string;
 
 export const MAX_TURNS = 20;
 export const MAX_TURN_CHARS = 600;

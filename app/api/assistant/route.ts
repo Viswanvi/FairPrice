@@ -3,7 +3,7 @@ import { anthropicClient } from "@/lib/pricing/ai-client";
 import { assistantData } from "@/lib/assistant/data";
 import { createRateLimiter } from "@/lib/assistant/rate-limit";
 import { AssistantError, runAssistant } from "@/lib/assistant/run";
-import { assistantRequestSchema, type AssistantLang } from "@/lib/assistant/schema";
+import { assistantRequestSchema } from "@/lib/assistant/schema";
 import { currentSellerId } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { clientIp, displayCountry } from "@/lib/geo/country";
@@ -17,11 +17,11 @@ import { HttpError, readJson, route } from "@/lib/http";
 
 const limiter = createRateLimiter({ limit: 30, windowMs: 10 * 60_000 });
 
-const BUSY: Record<AssistantLang, string> = {
+const BUSY: Record<string, string> = {
   en: "I'm getting a lot of questions right now. Please wait a minute and try again.",
   hi: "अभी बहुत सारे सवाल आ रहे हैं। कृपया एक मिनट रुककर फिर से कोशिश करें।",
 };
-const UNAVAILABLE: Record<AssistantLang, string> = {
+const UNAVAILABLE: Record<string, string> = {
   en: "The assistant can't reach the AI right now. You can still explore the page yourself.",
   hi: "असिस्टेंट अभी AI से जुड़ नहीं पा रहा है। आप पेज खुद भी देख सकते हैं।",
 };
@@ -30,7 +30,7 @@ export const POST = route(async (request: Request) => {
   const body = await readJson(request, assistantRequestSchema);
   const h = await headers();
 
-  if (!limiter.take(clientIp(h) ?? "unknown")) throw new HttpError(429, "rate_limited", BUSY[body.lang]);
+  if (!limiter.take(clientIp(h) ?? "unknown")) throw new HttpError(429, "rate_limited", (BUSY[body.lang] ?? BUSY.en));
 
   const url = new URL(body.path, "http://localhost");
   const geo = await displayCountry({ headers: h, as: url.searchParams.get("as"), overrideEnabled: env.DEMO_GEO_OVERRIDE });
@@ -48,7 +48,7 @@ export const POST = route(async (request: Request) => {
   } catch (error) {
     if (error instanceof AssistantError) {
       console.error("[assistant]", error.message); // status code only; no conversation text
-      throw new HttpError(503, "assistant_unavailable", UNAVAILABLE[body.lang]);
+      throw new HttpError(503, "assistant_unavailable", (UNAVAILABLE[body.lang] ?? UNAVAILABLE.en));
     }
     throw error;
   }

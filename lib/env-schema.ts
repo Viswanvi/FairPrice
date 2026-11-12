@@ -69,6 +69,15 @@ export const serverEnvSchema = z.object({
 
   // Demo only: ?as=XX simulates the visitor's IP country for the DISPLAYED price.
   DEMO_GEO_OVERRIDE: booleanFlag("DEMO_GEO_OVERRIDE"),
+
+  // Video avatar (Gemini Live on Vertex AI). Optional: without a key and project the assistant
+  // keeps the browser voice. Server only, never NEXT_PUBLIC_.
+  GOOGLE_API_KEY: optional,
+  GOOGLE_CLOUD_PROJECT: optional,
+  GOOGLE_CLOUD_LOCATION: optional,
+  AVATAR_LIVE_MODEL: optional,
+  AVATAR_NAME: optional,
+  AVATAR_VOICE: optional,
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -10,8 +10,9 @@ test("first visit shows the welcome card, Hindi first for the India demo; 'Explo
   const welcome = page.getByTestId("assistant-welcome");
   await expect(welcome).toBeVisible();
   const buttons = welcome.getByRole("button");
-  await expect(buttons.nth(0)).toHaveText("हिन्दी में बोलें");
-  await expect(buttons.nth(1)).toHaveText("Talk in English");
+  await expect(buttons.nth(0)).toHaveText("3 मिनट का टूर देखें"); // the tour comes first (AVATAR_SPEC section 2)
+  await expect(buttons.nth(1)).toHaveText("हिन्दी में बोलें");
+  await expect(buttons.nth(2)).toHaveText("Talk in English");
 
   await welcome.getByRole("button", { name: /Explore on my own/ }).click();
   await expect(welcome).toHaveCount(0);

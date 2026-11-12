@@ -24,6 +24,10 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Decisions (newest first)
 
+- 2026-11-12 (avatar branch): **Video avatar = Gemini Live on Vertex AI, one short session per spoken turn.** `POST /api/avatar/speak` opens the session on the server (key stays there), sends only FairPrice's text with a "read exactly" instruction and no tools, and streams fragmented MP4 back as NDJSON; the browser plays it with Media Source Extensions (ported from the GCS "Alex" player). Chosen over a WebSocket bridge (needs a custom Next server and a Render start-command change) and over ephemeral browser tokens (Gemini Developer API only; the avatar needs Vertex). Nothing streams while silent, so the spec's "pause after 20 s silence" and "one stream at a time" hold by construction. Latency: about 2 s to connect, 4–5 s to first video.
+- 2026-11-12: **Faithfulness check.** Gemini's own transcript of each turn must contain no number the text didn't (`lib/avatar/faithful.ts`); otherwise video is off for the visit. One failed video turn falls back to voice for that turn; a second turns video off (Gemini occasionally drops a session with 1011).
+- 2026-11-12: **Tour lines are fixed text in English and Hindi** (`lib/assistant/tour.ts`); a test checks every Hindi line has the same numbers as the English. Talk mode accepts any language code (schema + prompt widened; money rules unchanged).
+
 - **Voice assistant (branch `voice-agent`, user-approved plan, 2026-11-11).** `main` stays the safe submission, tagged `submission-safe`. It is merged only if the assistant is ready by **Thursday 4 PM IST**; otherwise the safe build is submitted.
   - **Scope (user's choices):**
     - The assistant is an *action guide*, not a Q&A bot.
@@ -162,6 +166,13 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 
 ## Last session summary
+
+- 2026-11-12 (avatar branch, not on main): video avatar + guided tour built per docs/AVATAR_SPEC.md.
+  - **Checks:** typecheck and lint pass; 449 unit tests and 34 Playwright tests pass (avatar mocked in Playwright).
+  - **Browser:** tour T1–T5 played with live avatar video; skip (typed) and Stop work; Hindi Talk turn read Claude's reply ("16 डॉलर") as video; Hindi T3 line read with numbers intact.
+  - **Not done yet:** full tour start to finish in the user's Chrome, a real sandbox purchase with the avatar on the page, the "Slow 4G" DevTools check, the screen recording.
+  - **Local setup note:** Grid & Grain was approved in the LOCAL database only, for the tour's buyer steps.
+  - **Later the same day:** AvatarAdapter/VoiceAdapter (`adapters.ts`), a Video/Voice/Text switch (rule 7), "skip"/"stop" heard at any step (a command the guide's own line says is ignored while it plays), "walk me through the demo" starts the tour, the avatar's last frame stays between turns, and first-time buyer guidance in the prompt (2026-11-12.2). Root cause of the earlier "cut off after a second" bug: a momentary visibilitychange "hidden" (e.g. a permission bubble) stopped the avatar; it now stops only if the tab stays hidden 1.5 s. Checks: 451 unit + 36 Playwright tests, typecheck, lint pass.
 
 - 2026-11-11 (evening): native-language voice help added (Hindi, Portuguese, Spanish and English; price and result).
   - **Checks:** 410 unit + 44 DB + 26 Playwright tests pass; typecheck, lint and build pass.

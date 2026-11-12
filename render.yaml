@@ -72,6 +72,21 @@ services:
       - key: DEMO_GEO_OVERRIDE
         value: "true"
 
+      # Video avatar (optional; Gemini Live on Vertex AI). Server only. Leave the key empty to
+      # keep the browser voice.
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_CLOUD_LOCATION
+        value: us-central1
+      - key: AVATAR_LIVE_MODEL
+        value: gemini-3.8-live
+      - key: AVATAR_NAME
+        value: Jay
+      - key: AVATAR_VOICE
+        value: Charon
+
 # Optional: let this Blueprint create the database (only if the workspace has no free one yet).
 # Uncomment, then replace DATABASE_URL above with:
 #   - key: DATABASE_URL

@@ -8,10 +8,15 @@ describe("assistantRequestSchema", () => {
     expect(assistantRequestSchema.safeParse(ok).success).toBe(true);
   });
 
+  it("accepts any language code (Talk mode replies in the visitor's language)", () => {
+    for (const lang of ["hi", "es", "pt-BR", "ta", "fil"]) expect(assistantRequestSchema.safeParse({ ...ok, lang }).success).toBe(true);
+  });
+
   it("rejects bad input without throwing", () => {
     for (const bad of [
       { ...ok, messages: [] },
-      { ...ok, lang: "fr" },
+      { ...ok, lang: "not a language" },
+      { ...ok, lang: "" },
       { ...ok, path: "https://evil.example/" },
       { ...ok, messages: [{ role: "assistant", text: "hi" }] },
       { ...ok, messages: [{ role: "user", text: "a" }, { role: "assistant", text: "b" }] },

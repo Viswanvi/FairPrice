@@ -34,20 +34,23 @@ const MAX_TOKENS = 2048;
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 const MAX_REPLY_CHARS = 700;
 
-const FALLBACK_REPLY: Record<AssistantLang, string> = {
+const FALLBACK_REPLY: Record<string, string> = {
   en: "Sorry, I can't help with that. I can find a product for you or help you set one up for sale.",
   hi: "माफ़ कीजिए, मैं इसमें मदद नहीं कर सकता। मैं आपके लिए कोई प्रोडक्ट ढूँढ सकता हूँ या बेचने के लिए प्रोडक्ट सेट करने में मदद कर सकता हूँ।",
 };
 
 /**
  * "hi" when Hindi words carry the sentence, else "en". Counts words, not letters, so Hindi with
- * English product names mixed in ("मुझे figma templates चाहिए") is still Hindi.
+ * English product names mixed in ("मुझे figma templates चाहिए") is still Hindi. Any other
+ * language (Spanish, Tamil…) can't be told apart by script here, so it keeps the visitor's
+ * chosen language unless the text is clearly Hindi.
  */
 export function detectLang(text: string, fallback: AssistantLang): AssistantLang {
   const words = text.split(/\s+/).filter(Boolean);
   const hindi = words.filter((w) => /[ऀ-ॿ]/.test(w)).length;
   const english = words.filter((w) => /[A-Za-z]/.test(w) && !/[ऀ-ॿ]/.test(w)).length;
   if (hindi === 0 && english === 0) return fallback;
+  if (fallback !== "en" && fallback !== "hi") return hindi > english ? "hi" : fallback;
   return hindi > 0 && hindi * 2 >= english ? "hi" : "en";
 }
 
@@ -102,7 +105,7 @@ export async function runAssistant(
     }
 
     if (response.stop_reason === "refusal") {
-      reply = FALLBACK_REPLY[lang];
+      reply = (FALLBACK_REPLY[lang] ?? FALLBACK_REPLY.en);
       break;
     }
 
@@ -128,6 +131,6 @@ export async function runAssistant(
     messages.push({ role: "user", content: results });
   }
 
-  const cleaned = cleanReply(reply) || FALLBACK_REPLY[lang];
+  const cleaned = cleanReply(reply) || (FALLBACK_REPLY[lang] ?? FALLBACK_REPLY.en);
   return { reply: cleaned, lang: detectLang(cleaned, lang), actions, products: [...products.values()] };
 }

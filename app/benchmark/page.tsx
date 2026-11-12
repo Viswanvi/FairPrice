@@ -74,6 +74,7 @@ export default async function BenchmarkPage({ searchParams }: PageProps<"/benchm
       <Legend />
       <div className="grid gap-4 lg:grid-cols-3">
         <StatTile
+          marker="benchmark_tile"
           title="More than 20% off where the audience is small"
           formula={product.counts.deepDiscountLowRelevance.formula}
           ai={product.counts.deepDiscountLowRelevance.ai}
@@ -183,9 +184,9 @@ function Legend() {
   );
 }
 
-function StatTile({ title, formula, ai, note }: { title: string; formula: number; ai: number; note: string }) {
+function StatTile({ title, formula, ai, note, marker }: { title: string; formula: number; ai: number; note: string; marker?: string }) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 shadow-card">
+    <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 shadow-card" data-assistant-highlight={marker}>
       <h3 className="text-sm font-medium text-ink-2">{title}</h3>
       <div className="flex items-end gap-6">
         <Figure label="Formula" value={formula} swatch="bg-series-formula" />

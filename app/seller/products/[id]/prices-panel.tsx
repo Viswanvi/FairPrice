@@ -185,7 +185,7 @@ export function PricesPanel({
             onChange={setMode}
             options={[
               { value: "prices", label: "Prices" },
-              { value: "compare", label: "Formula vs AI" },
+              { value: "compare", label: "Formula vs AI", marker: "formula_toggle" },
             ]}
           />
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by relevance">
