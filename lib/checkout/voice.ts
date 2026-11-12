@@ -54,7 +54,10 @@ const SPANISH_SPEAKING = new Set([
   "ES", "MX", "AR", "CO", "PE", "CL", "EC", "VE", "GT", "CU", "BO", "DO", "HN", "PY", "SV", "NI", "CR", "PA", "UY", "PR",
 ]);
 
-/** The language the explanation starts in for a visitor's display country. */
+/**
+ * The visitor's likely language, by display country. Not the starting language: the explanation
+ * always starts in English (user's decision, 2026-11-12), with the others one click away.
+ */
 export function defaultVoiceLanguage(country: string | null): VoiceLanguage {
   const code = country?.toUpperCase() ?? "";
   if (code === "IN") return "hi";

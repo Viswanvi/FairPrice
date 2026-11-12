@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { demoBannerText, priceHeadline } from "@/lib/checkout/display";
 import { buildQuote } from "@/lib/checkout/quote";
-import { defaultVoiceLanguage } from "@/lib/checkout/voice";
 import { prisma } from "@/lib/db/client";
 import { getApprovedTable } from "@/lib/db/price-tables";
 import { env } from "@/lib/env";
@@ -66,7 +65,7 @@ export default async function BuyerPage({ params, searchParams }: PageProps<"/p/
 
   return (
     <Shell banner={quote.overridden && quote.shownCountry ? demoBannerText(quote.shownCountry) : null}>
-      <VoiceProvider initialLang={defaultVoiceLanguage(quote.shownCountry)} price={voicePrice}>
+      <VoiceProvider initialLang="en" price={voicePrice}>
       <section className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold leading-snug tracking-tight sm:text-2xl">{product.title}</h1>
