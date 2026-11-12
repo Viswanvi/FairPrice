@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { numbersIn } from "@/lib/avatar/faithful";
-import { heardOwnLine, isTourRequest, TOUR, TOUR_LANGS, TOUR_MARKERS, tourCommand } from "./tour";
+import { heardOwnLine, isTourRequest, SELLER_HOME_MARKER, sellerArea, TOUR, TOUR_LANGS, TOUR_MARKERS, tourCommand } from "./tour";
 
 const APP = path.join(process.cwd(), "app");
 
@@ -88,6 +88,17 @@ describe("tour", () => {
     for (const no of ["I need a figma template", "is this a demo product?", "let's pay", "मुझे टेम्पलेट चाहिए"]) {
       expect(isTourRequest(no), no).toBe(false);
     }
+  });
+
+  it("treats the seller as signed in only when the product list shows, not just the /seller address", () => {
+    const none = { passwordField: false, sellerHome: false };
+    // The brief "/seller" a signed-out visitor sees before the redirect: still loading.
+    expect(sellerArea("/seller", none)).toBeNull();
+    expect(sellerArea("/seller", { passwordField: false, sellerHome: true })).toBe("in");
+    expect(sellerArea("/seller/sign-in", { passwordField: true, sellerHome: false })).toBe("signin");
+    expect(sellerArea("/seller/sign-in", none)).toBeNull(); // form not rendered yet
+    expect(sellerArea("/p/bench-design-templates", none)).toBeNull(); // navigation not started
+    expect(appSource()).toContain(`data-assistant-highlight="${SELLER_HOME_MARKER}"`);
   });
 
   it("understands skip and stop in English and Hindi", () => {

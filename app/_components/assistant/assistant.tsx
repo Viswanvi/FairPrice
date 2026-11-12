@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AssistantLang, AssistantResponse, ClientAction, ProductCard } from "@/lib/assistant/schema";
 import { MAX_TURN_CHARS, MAX_TURNS } from "@/lib/assistant/schema";
-import { heardOwnLine, isTourRequest, TOUR, tourCommand, tourLang, type TourStep } from "@/lib/assistant/tour";
+import { heardOwnLine, isTourRequest, SELLER_HOME_MARKER, sellerArea, TOUR, tourCommand, tourLang, type TourStep } from "@/lib/assistant/tour";
 import type { CheckoutResult } from "@/lib/checkout/messages";
 import { resultSpeech, VOICE_LANGUAGES, type VoiceLanguage } from "@/lib/checkout/voice";
 import { cx } from "../cx";
@@ -242,6 +242,9 @@ function isPartOf(caption: string, line: string): boolean {
 }
 
 const marker = (name: string) => document.querySelector<HTMLElement>(`[data-assistant-highlight="${name}"]`);
+/** "signin", "in" or null (still loading): judged by what the page shows, not only its address. */
+const sellerAreaNow = () =>
+  sellerArea(window.location.pathname, { passwordField: !!marker("password_field"), sellerHome: !!marker(SELLER_HOME_MARKER) });
 
 type TourState = { index: number; paused: boolean; waiting: boolean };
 /** "listen": the visitor talked over a tour line without a command; the tour waits (Alex answers). */
@@ -691,15 +694,9 @@ export function Assistant() {
         if (step.onlyIfSignedOut) {
           // /seller sends signed-out visitors to /seller/sign-in; signed-in sellers stay on /seller.
           router.push(step.path);
-          const where = await waitUntil(
-            () => {
-              const p = window.location.pathname;
-              if (p === "/seller/sign-in") return marker("password_field") ? "signin" : null;
-              return p === "/seller" ? "in" : null;
-            },
-            10_000,
-            signal,
-          );
+          const where = await waitUntil(sellerAreaNow, 10_000, signal);
+          // Neither page showed up: skip the seller part (T6 → T8) rather than run it signed out.
+          if (where === null && !signal.aborted) tourRef.current.end = "skip";
           if (where !== "signin") return;
         } else {
           await performActions([{ type: "navigate", path: step.path }], router);
@@ -765,7 +762,11 @@ export function Assistant() {
         window.addEventListener(CHECKOUT_RESULT_EVENT, onResult);
         try {
           if (step.wait === "checkout_result") await waitUntil(() => result, 3 * 60_000, signal);
-          else await waitUntil(() => (window.location.pathname === "/seller" && !marker("password_field") ? true : null), 5 * 60_000, signal);
+          else {
+            const signedIn = await waitUntil(() => (sellerAreaNow() === "in" ? true : null), 5 * 60_000, signal);
+            // Still signed out after the wait: skip the seller part (T6 → T8).
+            if (!signedIn && !signal.aborted) tourRef.current.end = "skip";
+          }
         } finally {
           window.removeEventListener(CHECKOUT_RESULT_EVENT, onResult);
           setTour((s) => (s ? { ...s, waiting: false } : s));

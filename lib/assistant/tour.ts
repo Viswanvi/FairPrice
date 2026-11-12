@@ -202,6 +202,20 @@ export function heardOwnLine(cmd: TourCommand, line: string | null): boolean {
   return TOUR_COMMANDS[cmd].some((w) => l.includes(w));
 }
 
+/** Marker on the signed-in seller's product list (app/seller/page.tsx). */
+export const SELLER_HOME_MARKER = "seller_home";
+
+/**
+ * Where opening /seller landed (T7): "signin" when the sign-in form shows, "in" when the seller's
+ * product list shows, null while still loading. The address alone isn't enough: the browser shows
+ * "/seller" for a moment before a signed-out visitor is redirected to /seller/sign-in.
+ */
+export function sellerArea(pathname: string, page: { passwordField: boolean; sellerHome: boolean }): "signin" | "in" | null {
+  if (pathname === "/seller/sign-in" && page.passwordField) return "signin";
+  if (pathname === "/seller" && page.sellerHome && !page.passwordField) return "in";
+  return null;
+}
+
 export function tourLang(lang: string): TourLang {
   return lang === "hi" ? "hi" : "en";
 }
