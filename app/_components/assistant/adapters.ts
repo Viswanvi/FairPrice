@@ -1,32 +1,21 @@
 import { findVoice, speak, stopSpeaking } from "../speech";
-import { avatarSpeak, avatarStop, type SpeakOutcome } from "./avatar";
 
 /**
- * How the guide speaks (AVATAR_SPEC section 7). The widget picks one adapter per turn:
- * AvatarAdapter on a fast connection while the video budget lasts, else VoiceAdapter (the
- * browser's own voice). Both only ever speak the text they're given.
+ * The browser's own voice, used when Alex isn't available (no connection to Gemini, or the
+ * visitor chose voice without Alex). Speaks only the text it's given.
  */
 export interface SpeechAdapter {
-  readonly kind: "video" | "voice";
-  /** Get ready for a conversation in this language (nothing streams until speak()). */
-  start(lang: string): void;
-  /** Speak the text; resolves when it has finished (or was stopped, or failed). */
-  speak(text: string, lang: string): Promise<SpeakOutcome>;
-  /** Stop speaking now. */
+  speak(text: string, lang: string): Promise<"done" | "failed">;
   stop(): void;
-  /** The conversation is over: release everything. */
-  end(): void;
-  /** Called with a short code when speaking fails (no text, no personal data). */
-  onError?: (code: string) => void;
 }
 
 const VOICE_PREFIXES: Record<string, readonly string[]> = { en: ["en-in", "en-us", "en-gb", "en"], hi: ["hi"] };
 const SPEECH_LANG: Record<string, string> = { en: "en-IN", hi: "hi-IN" };
 
 /**
- * The avatar is a man, so when the guide falls back to the browser voice it should sound like
- * one too (default voices are often female). Matched by the voice's name: Windows and Chrome
- * don't report a gender. ponytail: a name list; extend it when a new platform voice shows up.
+ * Alex is a man, so the browser voice should sound like one too (default voices are often
+ * female). Matched by the voice's name: Windows and Chrome don't report a gender.
+ * ponytail: a name list; extend it when a new platform voice shows up.
  */
 const MALE_VOICE = /\b(male|david|mark|guy|ravi|prabhat|hemant|madhur|george|james|richard|ryan|christopher|daniel|alex|fred|rishi)\b/i;
 const norm = (lang: string) => lang.toLowerCase().replace("_", "-");
@@ -43,37 +32,14 @@ async function guideVoice(prefixes: readonly string[]): Promise<SpeechSynthesisV
   return any;
 }
 
-/** The browser's built-in voice. Resolves "failed" when there is no voice for the language (text only). */
+/** Resolves "failed" when there is no voice for the language (the text on screen is the fallback). */
 export function createVoiceAdapter(): SpeechAdapter {
-  const adapter: SpeechAdapter = {
-    kind: "voice",
-    start() {},
+  return {
     async speak(text, lang) {
       const voice = await guideVoice(VOICE_PREFIXES[lang] ?? [lang.toLowerCase(), lang.toLowerCase().split("-")[0]]);
-      if (!voice) {
-        adapter.onError?.("no_voice");
-        return "failed";
-      }
-      return new Promise<SpeakOutcome>((resolve) => speak(text, SPEECH_LANG[lang] ?? lang, voice, () => resolve("done")));
+      if (!voice) return "failed";
+      return new Promise((resolve) => speak(text, SPEECH_LANG[lang] ?? lang, voice, () => resolve("done")));
     },
     stop: stopSpeaking,
-    end: stopSpeaking,
   };
-  return adapter;
-}
-
-/** The video avatar (Gemini Live via POST /api/avatar/speak). */
-export function createAvatarAdapter(): SpeechAdapter {
-  const adapter: SpeechAdapter = {
-    kind: "video",
-    start() {},
-    async speak(text) {
-      const outcome = await avatarSpeak(text);
-      if (outcome === "failed" || outcome === "unfaithful") adapter.onError?.(outcome);
-      return outcome;
-    },
-    stop: avatarStop,
-    end: avatarStop,
-  };
-  return adapter;
 }

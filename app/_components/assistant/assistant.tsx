@@ -2,30 +2,43 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { AssistantLang, AssistantResponse, ProductCard } from "@/lib/assistant/schema";
+import type { AssistantLang, AssistantResponse, ClientAction, ProductCard } from "@/lib/assistant/schema";
 import { MAX_TURN_CHARS, MAX_TURNS } from "@/lib/assistant/schema";
 import { heardOwnLine, isTourRequest, TOUR, tourCommand, tourLang, type TourStep } from "@/lib/assistant/tour";
 import type { CheckoutResult } from "@/lib/checkout/messages";
 import { resultSpeech, VOICE_LANGUAGES, type VoiceLanguage } from "@/lib/checkout/voice";
 import { cx } from "../cx";
 import { createRecognition, noSubscribe, recognitionSupported, speechSupported, type RecognitionLike } from "../speech";
-import { createAvatarAdapter, createVoiceAdapter } from "./adapters";
+import { createVoiceAdapter } from "./adapters";
 import {
-  attachAvatarVideo,
-  avatarStop,
-  noteVideoFailure,
-  startVideoTask,
-  takeVideoTurn,
-  turnVideoOff,
-  videoAvailable,
-  videoTurnsLeft,
-  type SpeakOutcome,
-} from "./avatar";
+  attachAlexVideo,
+  closeAlex,
+  connectAlex,
+  hushAlex,
+  isAlexConnected,
+  isAlexPaused,
+  presentToAlex,
+  resumeAlex,
+  setAlexAudioOnly,
+  setAlexMuted,
+  tellAlex,
+  type AlexHandlers,
+} from "./alex";
+import { addVideoMs, noteVideoFailure, startVideoTask, takeVideoTurn, videoAvailable, videoTurnsLeft } from "./avatar";
 import { CHECKOUT_RESULT_EVENT } from "./events";
 import { highlight, performActions } from "./page-actions";
 
-/** One of each per page; the widget picks which speaks each turn. */
-const avatarAdapter = createAvatarAdapter();
+/**
+ * The FairPrice guide is Alex: a live video avatar with Gemini as its brain (the GCS "Alex" setup),
+ * started only from a button. Alex follows the same rules and uses the same tools as the earlier
+ * Claude assistant (lib/alex/gemini.ts); prices come only from the server's tools. Alex hears the
+ * visitor through the mic and answers in their language. A guided tour (lib/assistant/tour.ts)
+ * has Alex say fixed, reviewed lines.
+ *
+ * If Alex can't start (no connection to Gemini), the visitor gets the earlier guide: the Claude
+ * assistant (POST /api/assistant) with the browser's voice. Checkout never depends on either.
+ */
+
 const voiceAdapter = createVoiceAdapter();
 
 /** How the guide speaks, chosen by the visitor: video when possible (default), voice, or text only. */
@@ -49,19 +62,9 @@ function saveOutput(o: Output): void {
   }
 }
 
-/**
- * The FairPrice guide: a small floating panel on every page. Visitors talk (or type) in their
- * language; the server (POST /api/assistant) works out what they want and returns a reply plus
- * page actions, which run here. A guided tour (lib/assistant/tour.ts) walks through the product.
- *
- * Speaking: on a fast connection, a video avatar reads the text (./avatar.ts); otherwise, or once
- * the video budget is used, the browser's own voice; with no voice, the text on screen. The avatar
- * only ever reads text FairPrice already has. Listening is the browser's speech recognition.
- * Nothing starts until the visitor taps (browsers require it for the microphone and for sound).
- */
-
 type Turn = { role: "user" | "assistant"; text: string; products?: ProductCard[] };
 type Status = "idle" | "listening" | "thinking" | "speaking";
+type AlexState = "off" | "starting" | "live" | "paused";
 
 const STORAGE_KEY = "fp_assistant_v1";
 export const WELCOME_KEY = "fp_assistant_welcome_seen";
@@ -73,16 +76,25 @@ const LISTEN_LANG: Record<string, string> = { en: "en-IN", hi: "hi-IN" };
 const listenLang = (l: string) => LISTEN_LANG[l] ?? l;
 /** Payment results have written translations for a few languages; others hear English. */
 const resultLang = (l: string): VoiceLanguage => ((VOICE_LANGUAGES as readonly string[]).includes(l) ? (l as VoiceLanguage) : "en");
+/** The language of what the visitor said, as far as the script tells (Hindi vs. everything else). */
+const spokenLang = (text: string): AssistantLang => (/[ऀ-ॿ]/.test(text) ? "hi" : "en");
+
+const GREET =
+  "APP: The visitor just opened the guide. Greet them in one short sentence as Alex, FairPrice's AI guide, and ask whether they want to buy something or sell their own product.";
 
 const UI_EN = {
-  title: "FairPrice AI guide",
+  title: "Alex · FairPrice AI guide",
+  talk: "Talk to Alex",
+  live: "Alex is listening · tap to end",
+  pausedBtn: "Alex paused · tap to continue",
+  starting: "Starting Alex…",
   tap: "Tap to speak",
   listening: "Listening…",
   thinking: "Working on it…",
   speaking: "Speaking · tap to stop",
   placeholder: "Or type here…",
   send: "Send",
-  close: "Close assistant",
+  close: "Close guide",
   open: "Open",
   fair: "fair price for",
   standard: "standard price",
@@ -94,7 +106,10 @@ const UI_EN = {
   error: "Something went wrong. Please try again.",
   couldNot: "I couldn't do that step on this page. Please check the page and try again.",
   switching: "Switching to voice to keep this quick.",
-  videoOff: "Video isn't available right now, so I'll use my voice.",
+  noAlex: "Alex isn't available right now, so you have the text and voice guide.",
+  alexLost: "Alex lost the connection. Tap to talk again.",
+  checkPrice: "Please check the price shown on the page: it is the one you pay.",
+  pausedNote: "Alex paused because it went quiet. Tap to continue.",
   tour: "Tour",
   pause: "Pause",
   resume: "Resume",
@@ -112,14 +127,18 @@ type UiText = typeof UI_EN;
 const UI: Record<string, UiText> = {
   en: UI_EN,
   hi: {
-    title: "FairPrice AI गाइड",
+    title: "Alex · FairPrice AI गाइड",
+    talk: "Alex से बात करें",
+    live: "Alex सुन रहा है · बंद करने के लिए टैप करें",
+    pausedBtn: "Alex रुका है · जारी रखने के लिए टैप करें",
+    starting: "Alex शुरू हो रहा है…",
     tap: "बोलने के लिए टैप करें",
     listening: "सुन रहा हूँ…",
     thinking: "काम कर रहा हूँ…",
     speaking: "बोल रहा हूँ · रोकने के लिए टैप करें",
     placeholder: "या यहाँ लिखें…",
     send: "भेजें",
-    close: "असिस्टेंट बंद करें",
+    close: "गाइड बंद करें",
     open: "खोलें",
     fair: "उचित कीमत:",
     standard: "मानक कीमत",
@@ -131,7 +150,10 @@ const UI: Record<string, UiText> = {
     error: "कुछ गड़बड़ हुई। कृपया फिर से कोशिश करें।",
     couldNot: "मैं इस पेज पर वह कदम नहीं कर पाया। कृपया पेज देखकर फिर से कोशिश करें।",
     switching: "जल्दी के लिए अब मैं सिर्फ़ आवाज़ से बात करूँगा।",
-    videoOff: "वीडियो अभी उपलब्ध नहीं है, इसलिए मैं आवाज़ से बात करूँगा।",
+    noAlex: "Alex अभी उपलब्ध नहीं है, इसलिए आपके पास टेक्स्ट और आवाज़ वाला गाइड है।",
+    alexLost: "Alex का कनेक्शन टूट गया। फिर से बात करने के लिए टैप करें।",
+    checkPrice: "कृपया पेज पर दिखी कीमत देखें: आप वही कीमत देंगे।",
+    pausedNote: "शांति होने की वजह से Alex रुक गया। जारी रखने के लिए टैप करें।",
     tour: "टूर",
     pause: "रोकें",
     resume: "जारी रखें",
@@ -171,28 +193,6 @@ function markWelcomeSeen(): void {
     sessionStorage.setItem(WELCOME_KEY, "1");
   } catch {
     /* private mode: the welcome simply shows again next time */
-  }
-}
-
-/** Hindi first for Hindi-language browsers or the India demo; otherwise English. */
-function suggestedLang(): "en" | "hi" {
-  if (typeof window === "undefined") return "en";
-  if (navigator.languages?.some((l) => l.toLowerCase().startsWith("hi"))) return "hi";
-  if (new URLSearchParams(window.location.search).get("as")?.toUpperCase() === "IN") return "hi";
-  return "en";
-}
-
-/** The browser's own language when it isn't English or Hindi (offered as a third choice). */
-function browserLang(): { code: string; label: string } | null {
-  if (typeof navigator === "undefined") return null;
-  const code = navigator.language || "";
-  const base = code.split("-")[0].toLowerCase();
-  if (!base || base === "en" || base === "hi") return null;
-  try {
-    const label = new Intl.DisplayNames([code], { type: "language" }).of(base) ?? base;
-    return { code: base, label };
-  } catch {
-    return { code: base, label: base };
   }
 }
 
@@ -237,6 +237,7 @@ export function Assistant() {
   const [video, setVideo] = useState(false);
   const [tour, setTour] = useState<TourState | null>(null);
   const [output, setOutput] = useState<Output>(() => (typeof window === "undefined" ? "video" : loadOutput()));
+  const [alex, setAlex] = useState<AlexState>("off");
 
   const recognitionRef = useRef<RecognitionLike | null>(null);
   const handsFreeRef = useRef(false);
@@ -247,8 +248,18 @@ export function Assistant() {
   const videoRef = useRef(false);
   const outputRef = useRef(output);
   const micBlockedRef = useRef(false);
-  /** The latest beginTour, so send() can start the tour (send is memoised; beginTour is not). */
+  const alexRef = useRef<AlexState>("off");
+  /** Index of the bubble Alex / the visitor is currently speaking into (captions arrive in pieces). */
+  const alexBubbleRef = useRef<number | null>(null);
+  const userBubbleRef = useRef<number | null>(null);
+  const pendingCardsRef = useRef<ProductCard[]>([]);
+  /** True while Alex says a fixed line (tour, payment result). */
+  const scriptingRef = useRef(false);
+  const videoSinceRef = useRef(0);
+  /** The latest beginTour, so callbacks memoised earlier can start the tour. */
   const beginTourRef = useRef<(l: AssistantLang) => void>(() => {});
+  /** The latest endStep, for Alex's caption handler (set up before endStep exists). */
+  const endStepRef = useRef<(end: StepEnd) => void>(() => {});
   const tourRef = useRef<{ token: number; step: AbortController | null; end: StepEnd | null; resume: (() => void) | null }>({
     token: 0,
     step: null,
@@ -268,96 +279,170 @@ export function Assistant() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [open, lang, turns]);
 
-  /** Stop all speech now: the avatar and the browser voice. */
+  const setAlexState = useCallback((s: AlexState) => {
+    alexRef.current = s;
+    setAlex(s);
+  }, []);
+
+  /** Stop all speech now: Alex and the browser voice. */
   const hush = useCallback(() => {
-    avatarAdapter.stop();
+    hushAlex();
     voiceAdapter.stop();
   }, []);
 
-  // Warm up the voice list so the first reply speaks without delay; stop the avatar when the
-  // tab is hidden (spec: no streaming when no one is watching).
   useEffect(() => {
     if (speechSupported()) window.speechSynthesis.getVoices();
-    // Only if it stays hidden: a permission bubble or a quick window switch can flicker "hidden"
-    // for a moment, which used to cut the avatar off mid-sentence.
-    const onHidden = () => {
-      if (document.visibilityState !== "hidden") return;
-      setTimeout(() => document.visibilityState === "hidden" && avatarStop(), 1500);
-    };
-    document.addEventListener("visibilitychange", onHidden);
     return () => {
-      document.removeEventListener("visibilitychange", onHidden);
       recognitionRef.current?.abort();
-      avatarAdapter.end();
-      voiceAdapter.end();
+      closeAlex();
+      voiceAdapter.stop();
     };
   }, []);
 
   const setVideoMode = useCallback((on: boolean) => {
+    if (videoRef.current && !on && videoSinceRef.current) addVideoMs(Date.now() - videoSinceRef.current);
+    videoSinceRef.current = on ? Date.now() : 0;
     videoRef.current = on;
     setVideo(on);
   }, []);
 
-  /** Start a task: video for its expected turns plus two, if the connection is fast enough. */
-  const startTask = useCallback(
-    (expectedTurns: number) => {
-      const on = outputRef.current === "video" && videoAvailable();
-      if (on) startVideoTask(expectedTurns);
-      setVideoMode(on);
-    },
-    [setVideoMode],
-  );
+  /** Start a task: video for its expected turns plus two (AVATAR_SPEC section 6). */
+  const startTask = useCallback((expectedTurns: number) => {
+    if (outputRef.current === "video" && videoAvailable()) startVideoTask(expectedTurns);
+  }, []);
 
-  /** The visitor chose how the guide speaks (spec rule 7: switch to voice or text). */
-  const chooseOutput = useCallback(
-    (o: Output) => {
-      hush();
-      outputRef.current = o;
-      setOutput(o);
-      saveOutput(o);
-      // Back to video only while this task's budget lasts; choosing it doesn't refill the budget.
-      setVideoMode(o === "video" && videoAvailable() && videoTurnsLeft() > 0);
-    },
-    [hush, setVideoMode],
-  );
+  // ---- Alex ----
 
-  /**
-   * Speak FairPrice's text through the adapter for this turn: the avatar in video mode (exact
-   * text only), else the browser voice, else nothing (the text on screen). Reports how it ended.
-   */
-  const say = useCallback(
-    async (text: string, l: AssistantLang, onDone: (outcome: SpeakOutcome) => void) => {
-      if (outputRef.current === "text") return onDone("done");
-      if (videoRef.current) {
-        if (takeVideoTurn()) {
-          const outcome = await avatarAdapter.speak(text, l);
-          if (outcome === "done" || outcome === "stopped") return onDone(outcome);
-          if (outcome === "unfaithful") {
-            turnVideoOff(); // it said a number we didn't give it: voice for the rest of this visit
-            setVideoMode(false);
-            return onDone("done"); // it has already been heard; don't repeat it
-          }
-          // Failed: this turn uses voice; a second failure turns video off for the visit.
-          if (noteVideoFailure()) {
-            setVideoMode(false);
-            setNote(ui(l).videoOff);
-          }
-        } else {
-          setVideoMode(false);
-          setNote(ui(l).switching);
-        }
+  /** Show a caption in the bubble for the current turn (Alex's words arrive in pieces). */
+  const caption = useCallback((who: "alex" | "user", text: string) => {
+    if (who === "alex" && scriptingRef.current) return;
+    const ref = who === "alex" ? alexBubbleRef : userBubbleRef;
+    // Taken out here, not inside the updater: React may run an updater twice in development.
+    const cards = who === "alex" ? pendingCardsRef.current : [];
+    if (cards.length) pendingCardsRef.current = [];
+    setTurns((t) => {
+      const next = [...t];
+      const i = ref.current;
+      if (i !== null && next[i]) next[i] = { ...next[i], text };
+      else {
+        ref.current = next.length;
+        next.push({ role: who === "alex" ? "assistant" : "user", text });
       }
-      const outcome = await voiceAdapter.speak(text, l);
-      onDone(outcome === "failed" ? "done" : outcome); // no voice for this language: the text on screen
+      if (cards.length) {
+        const at = ref.current!;
+        next[at] = { ...next[at], products: [...(next[at].products ?? []), ...cards] };
+      }
+      return next;
+    });
+  }, []);
+
+  /** Run one of Alex's tool calls: the same server tools as the assistant, then the page actions. */
+  const runAlexTool = useCallback(
+    async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      if (name === "start_tour") {
+        setTimeout(() => beginTourRef.current(langRef.current), 0);
+        return { ok: true, note: "The tour is starting now. Say nothing." };
+      }
+      const res = await fetch("/api/alex/tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, args, path: window.location.pathname + window.location.search }),
+      });
+      if (!res.ok) return { error: "That step isn't available right now." };
+      const out = (await res.json()) as { result: string; actions: ClientAction[]; products: ProductCard[] };
+      if (out.products.length) pendingCardsRef.current.push(...out.products);
+      const problems = await performActions(out.actions, router);
+      if (problems.length) setNote(ui(langRef.current).couldNot);
+      return { result: out.result };
     },
-    [setVideoMode],
+    [router],
   );
 
-  /** say() as a promise. */
-  const sayP = useCallback(
-    (text: string, l: AssistantLang) => new Promise<SpeakOutcome>((resolve) => void say(text, l, resolve)),
-    [say],
+  /** Start Alex from a tap. Returns false if he can't start (the caller falls back to the old guide). */
+  const startAlex = useCallback(
+    async (greet: boolean): Promise<boolean> => {
+      setAlexState("starting");
+      const handlers: AlexHandlers = {
+        onToolCall: runAlexTool,
+        onCaption: (who, text) => {
+          caption(who, text);
+          if (who === "user") {
+            const l = spokenLang(text);
+            if (l !== langRef.current) {
+              langRef.current = l;
+              setLang(l);
+            }
+            // During the tour, "skip" / "stop" said to Alex steer the tour.
+            const cmd = tourRef.current.step ? tourCommand(text) : null;
+            if (cmd) endStepRef.current(cmd);
+          }
+        },
+        onTurnComplete: () => {
+          alexBubbleRef.current = null;
+          userBubbleRef.current = null;
+          // Video budget: n + 2 Alex turns per task, then voice (spec section 6).
+          if (videoRef.current) {
+            if (videoSinceRef.current) addVideoMs(Date.now() - videoSinceRef.current);
+            videoSinceRef.current = Date.now();
+            if (!takeVideoTurn()) {
+              setVideoMode(false);
+              setNote(ui(langRef.current).switching);
+              void setAlexAudioOnly(true);
+            }
+          }
+        },
+        onSpeaking: (s) => setStatus(s ? "speaking" : "idle"),
+        onMode: (m) => setVideoMode(m === "video" && outputRef.current === "video"),
+        onUnfaithful: () => setNote(ui(langRef.current).checkPrice),
+        onPaused: () => {
+          setAlexState("paused");
+          setVideoMode(false);
+          setStatus("idle");
+        },
+        onClosed: () => {
+          setAlexState("off");
+          setVideoMode(false);
+          setStatus("idle");
+          setNote(ui(langRef.current).alexLost);
+        },
+      };
+      const audioOnly = outputRef.current !== "video" || !videoAvailable() || videoTurnsLeft() <= 0;
+      try {
+        const { mic } = await connectAlex({ lang: langRef.current, audioOnly }, handlers);
+        setAlexMuted(outputRef.current === "text");
+        setAlexState("live");
+        setNote(mic ? null : ui(langRef.current).blocked);
+        if (greet) void tellAlex(GREET);
+        return true;
+      } catch {
+        if (!audioOnly) noteVideoFailure();
+        setAlexState("off");
+        setVideoMode(false);
+        return false;
+      }
+    },
+    [caption, runAlexTool, setAlexState, setVideoMode],
   );
+
+  /** Continue a paused Alex (same conversation). */
+  const continueAlex = useCallback(async () => {
+    try {
+      await resumeAlex();
+      setAlexState("live");
+      setNote(null);
+    } catch {
+      setAlexState("off");
+    }
+  }, [setAlexState]);
+
+  // ---- the earlier guide (Claude + browser voice), used when Alex can't start ----
+
+  /** Speak with the browser voice (or not at all in text mode). */
+  const say = useCallback(async (text: string, l: AssistantLang, onDone: () => void) => {
+    if (outputRef.current === "text") return onDone();
+    await voiceAdapter.speak(text, l);
+    onDone();
+  }, []);
 
   const listenRef = useRef<() => void>(() => {});
 
@@ -368,7 +453,6 @@ export function Assistant() {
 
   const send = useCallback(
     async (text: string, viaVoice: boolean) => {
-      // "Walk me through the demo": run the guided tour rather than answer in chat.
       if (!tourRef.current.step && isTourRequest(text)) {
         setTurns((t) => [...t, { role: "user", text }]);
         beginTourRef.current(langRef.current);
@@ -380,11 +464,7 @@ export function Assistant() {
       setTurns(next);
       setStatus("thinking");
       setNote(null);
-      // A filler while the AI works; not in video mode, where it would cost a video turn.
-      const filler =
-        viaVoice && !videoRef.current && outputRef.current !== "text"
-          ? setTimeout(() => void voiceAdapter.speak(ui(l).filler, l), 1200)
-          : null;
+      const filler = viaVoice && outputRef.current !== "text" ? setTimeout(() => void voiceAdapter.speak(ui(l).filler, l), 1200) : null;
 
       let data: (AssistantResponse & { message?: string }) | null = null;
       let ok = false;
@@ -392,11 +472,7 @@ export function Assistant() {
         const res = await fetch("/api/assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            lang: l,
-            messages: conversationFor(next),
-            path: window.location.pathname + window.location.search,
-          }),
+          body: JSON.stringify({ lang: l, messages: conversationFor(next), path: window.location.pathname + window.location.search }),
         });
         ok = res.ok;
         data = (await res.json()) as AssistantResponse & { message?: string };
@@ -427,17 +503,17 @@ export function Assistant() {
     [router, say, afterSpeaking, hush],
   );
 
-  /** Listen once. `onHeard` replaces the normal "send to the assistant" (the tour uses it for skip/stop). */
+  /** Listen once with the browser's recognition (earlier guide). `onHeard` is used by the tour for skip/stop. */
   const startListening = useCallback(
     (onHeard?: (heard: string) => void) => {
       const l = langRef.current;
       if (!recognitionSupported()) {
-        if (onHeard) return; // the tour still has its buttons and the text box
+        if (onHeard) return;
         setNote(ui(l).noRecognition);
         handsFreeRef.current = false;
         return;
       }
-      if (!onHeard) hush(); // listening for tour commands doesn't interrupt the guide
+      if (!onHeard) hush();
       recognitionRef.current?.abort();
       const recognition = createRecognition(listenLang(l));
       if (!recognition) return;
@@ -457,7 +533,7 @@ export function Assistant() {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           setNote(ui(l).blocked);
           handsFreeRef.current = false;
-          micBlockedRef.current = true; // the tour stops retrying
+          micBlockedRef.current = true;
         } else if (event.error === "no-speech" && !onHeard) {
           setNote(ui(l).noSpeech);
           handsFreeRef.current = false;
@@ -491,21 +567,39 @@ export function Assistant() {
     listenRef.current = () => startListening();
   }, [startListening]);
 
-  // Read the payment result aloud when the visitor has been using the assistant (the tour reads
-  // it itself, in order).
+  // ---- speaking a fixed line (tour lines, payment results): Alex if he's on, else the voice ----
+
+  const sayLine = useCallback(
+    async (text: string, l: AssistantLang) => {
+      if (alexRef.current === "live" || alexRef.current === "paused") {
+        setTurns((t) => [...t, { role: "assistant", text }]);
+        alexBubbleRef.current = null;
+        setStatus("speaking");
+        // Alex's live captions of a fixed line would only repeat it: the bubble above shows it exactly.
+        scriptingRef.current = true;
+        const r = await presentToAlex(text);
+        scriptingRef.current = false;
+        alexBubbleRef.current = null;
+        setStatus("idle");
+        if (r !== "closed") return;
+      } else setTurns((t) => [...t, { role: "assistant", text }]);
+      setStatus("speaking");
+      await new Promise<void>((resolve) => void say(text, l, resolve));
+      setStatus("idle");
+    },
+    [say],
+  );
+
+  // Read the payment result aloud when the visitor has been using the guide (the tour reads it itself).
   useEffect(() => {
     const onResult = (event: Event) => {
       if (!activeRef.current || tourRef.current.step) return;
-      const l = langRef.current;
-      const text = resultSpeech(resultLang(l), (event as CustomEvent<CheckoutResult>).detail);
-      setTurns((t) => [...t, { role: "assistant", text }]);
-      setStatus("speaking");
       handsFreeRef.current = false;
-      void say(text, l, () => setStatus("idle"));
+      void sayLine(resultSpeech(resultLang(langRef.current), (event as CustomEvent<CheckoutResult>).detail), langRef.current);
     };
     window.addEventListener(CHECKOUT_RESULT_EVENT, onResult);
     return () => window.removeEventListener(CHECKOUT_RESULT_EVENT, onResult);
-  }, [say]);
+  }, [sayLine]);
 
   // ---- Tour ----
 
@@ -521,10 +615,13 @@ export function Assistant() {
     },
     [hush],
   );
+  useEffect(() => {
+    endStepRef.current = endStep;
+  }, [endStep]);
 
-  /** Run one step; resolves with how it ended. */
+  /** Run one step. */
   const runStep = useCallback(
-    async (step: TourStep, l: AssistantLang, signal: AbortSignal): Promise<"next" | "notNeeded"> => {
+    async (step: TourStep, l: AssistantLang, signal: AbortSignal): Promise<void> => {
       if (step.path) {
         if (step.onlyIfSignedOut) {
           // /seller sends signed-out visitors to /seller/sign-in; signed-in sellers stay on /seller.
@@ -538,7 +635,7 @@ export function Assistant() {
             10_000,
             signal,
           );
-          if (where !== "signin") return "notNeeded";
+          if (where !== "signin") return;
         } else {
           await performActions([{ type: "navigate", path: step.path }], router);
         }
@@ -554,38 +651,28 @@ export function Assistant() {
         const el = await waitUntil(() => marker(step.highlight!), 8000, signal);
         if (el) highlight(el);
       }
-      if (signal.aborted) return "next";
+      if (signal.aborted) return;
 
-      // Listen for "skip" / "stop" for the whole step. While a line plays, a command word the line
-      // itself says ("…or say skip") is ignored, so the guide can't skip itself through the speaker.
+      // Without Alex, listen for "skip" / "stop" with the browser's recognition (Alex hears them himself).
+      // While a line plays, a command word the line itself says ("…or say skip") is ignored.
       let speakingLine: string | null = null;
       let stepDone = false;
       const listen = () => {
-        if (stepDone || signal.aborted || micBlockedRef.current || !recognitionSupported()) return;
+        if (alexRef.current !== "off" || stepDone || signal.aborted || micBlockedRef.current || !recognitionSupported()) return;
         startListening((heard) => {
           const cmd = tourCommand(heard);
           if (cmd && !heardOwnLine(cmd, speakingLine)) endStep(cmd);
           else setTimeout(listen, 300);
         });
       };
-      /** Say a line; if the avatar stopped without anyone asking, say it with the browser voice. */
-      const speakLine = async (text: string) => {
-        speakingLine = text;
-        setStatus("speaking");
-        const outcome = await sayP(text, l);
-        if (outcome === "stopped" && !signal.aborted && outputRef.current !== "text" && document.visibilityState === "visible") {
-          await voiceAdapter.speak(text, l);
-        }
-        speakingLine = null;
-        setStatus("idle");
-      };
 
       try {
         listen();
-        const line = step.line[tourLang(l)];
-        setTurns((t) => [...t, { role: "assistant", text: line }]);
-        await speakLine(line);
-        if (signal.aborted || !step.wait) return "next";
+        const line = step.line[tourLang(langRef.current || l)];
+        speakingLine = line;
+        await sayLine(line, langRef.current || l);
+        speakingLine = null;
+        if (signal.aborted || !step.wait) return;
 
         // Wait for the visitor: the payment result, or the seller signing in.
         setTour((s) => (s ? { ...s, waiting: true } : s));
@@ -599,19 +686,14 @@ export function Assistant() {
           window.removeEventListener(CHECKOUT_RESULT_EVENT, onResult);
           setTour((s) => (s ? { ...s, waiting: false } : s));
         }
-        if (result && !signal.aborted) {
-          // The result card's own message, read as written (spec: the avatar adds nothing about payment).
-          const text = resultSpeech(resultLang(l), result);
-          setTurns((t) => [...t, { role: "assistant", text }]);
-          await speakLine(text);
-        }
-        return "next";
+        // The result card's own message, as written (spec: nothing added about the payment).
+        if (result && !signal.aborted) await sayLine(resultSpeech(resultLang(langRef.current), result), langRef.current);
       } finally {
         stepDone = true;
         recognitionRef.current?.abort();
       }
     },
-    [router, sayP, startListening, endStep],
+    [router, sayLine, startListening, endStep],
   );
 
   const runTour = useCallback(
@@ -645,8 +727,10 @@ export function Assistant() {
         if (step.thenTalk && end === "next") {
           setTour(null);
           startTask(talkTurns(window.location.pathname));
-          handsFreeRef.current = true;
-          listenRef.current();
+          if (alexRef.current === "off") {
+            handsFreeRef.current = true;
+            listenRef.current();
+          }
           return;
         }
         i++;
@@ -671,40 +755,55 @@ export function Assistant() {
     endStep("stop");
   };
 
-  const begin = (l: AssistantLang) => {
+  // ---- starting the guide (only ever from a tap) ----
+
+  const openGuide = () => {
     markWelcomeSeen();
     setWelcome(false);
     setOpen(true);
-    setLang(l);
-    langRef.current = l;
     activeRef.current = true;
+  };
+
+  /** "Talk to Alex". Falls back to the earlier guide if Alex can't start. */
+  const talk = async () => {
+    openGuide();
     startTask(talkTurns(window.location.pathname));
+    if (await startAlex(turnsRef.current.length === 0 || alexRef.current === "off")) return;
+    setNote(ui(langRef.current).noAlex);
+    const l = langRef.current;
     const greeting = ui(l).greeting;
-    if (turnsRef.current.length === 0) setTurns([{ role: "assistant", text: greeting }]);
+    setTurns((t) => [...t, { role: "assistant", text: greeting }]);
     setStatus("speaking");
-    handsFreeRef.current = true; // after the greeting, start listening straight away
+    handsFreeRef.current = true;
     void say(greeting, l, afterSpeaking);
   };
 
-  const beginTour = (l: AssistantLang) => {
+  const beginTour = async (l: AssistantLang) => {
     hush();
     recognitionRef.current?.abort();
-    markWelcomeSeen();
-    setWelcome(false);
-    setOpen(true);
-    setLang(l);
-    langRef.current = l;
-    activeRef.current = true;
+    openGuide();
     handsFreeRef.current = false;
     startTask(TOUR.length);
+    if (alexRef.current === "off") await startAlex(false);
+    else if (alexRef.current === "paused") await continueAlex();
     void runTour(l);
   };
 
   useEffect(() => {
-    beginTourRef.current = beginTour;
+    beginTourRef.current = (l) => void beginTour(l);
   });
 
-  const micPressed = () => {
+  const mainButton = () => {
+    if (alex === "live") {
+      closeAlex();
+      setAlexState("off");
+      setVideoMode(false);
+      setStatus("idle");
+      return;
+    }
+    if (alex === "paused") return void continueAlex();
+    if (alex === "starting") return;
+    // The earlier guide's mic, when Alex isn't running.
     if (status === "listening") {
       handsFreeRef.current = false;
       recognitionRef.current?.stop();
@@ -717,24 +816,49 @@ export function Assistant() {
       return;
     }
     if (status === "thinking") return;
-    activeRef.current = true;
-    startListening();
+    void talk();
+  };
+
+  /** The visitor chose how the guide speaks (spec rule 7: switch to voice or text). */
+  const chooseOutput = (o: Output) => {
+    outputRef.current = o;
+    setOutput(o);
+    saveOutput(o);
+    voiceAdapter.stop();
+    setAlexMuted(o === "text");
+    if (alexRef.current !== "off") {
+      // Back to video only while this task's budget lasts; choosing it doesn't refill the budget.
+      const wantVideo = o === "video" && videoAvailable() && videoTurnsLeft() > 0;
+      void setAlexAudioOnly(!wantVideo);
+      if (!wantVideo) setVideoMode(false);
+    }
   };
 
   const submitDraft = () => {
     const text = draft.trim();
     if (!text || status === "thinking") return;
+    setDraft("");
     if (tour) {
       const cmd = tourCommand(text);
-      setDraft("");
       if (cmd) endStep(cmd);
       return;
     }
-    setDraft("");
+    activeRef.current = true;
+    if (isTourRequest(text)) {
+      setTurns((t) => [...t, { role: "user", text }]);
+      void beginTour(langRef.current);
+      return;
+    }
+    if (alexRef.current === "live" || alexRef.current === "paused") {
+      setTurns((t) => [...t, { role: "user", text }]);
+      userBubbleRef.current = null;
+      setAlexState("live");
+      void tellAlex(text.slice(0, MAX_TURN_CHARS));
+      return;
+    }
     handsFreeRef.current = false;
     recognitionRef.current?.abort();
     hush();
-    activeRef.current = true;
     void send(text.slice(0, MAX_TURN_CHARS), false);
   };
 
@@ -743,24 +867,38 @@ export function Assistant() {
     handsFreeRef.current = false;
     recognitionRef.current?.abort();
     hush();
+    closeAlex();
+    setAlexState("off");
+    setVideoMode(false);
     setStatus("idle");
     setOpen(false);
   };
 
   if (!isClient) return null;
   const text = ui(lang);
-  const extraLang = browserLang();
-  const langChoices = [
-    { code: "en", label: "EN" },
-    { code: "hi", label: "हिं" },
-    ...(extraLang ? [{ code: extraLang.code, label: extraLang.code.toUpperCase() }] : []),
-  ];
+  const alexOn = alex === "live" || alex === "paused" || isAlexConnected() || isAlexPaused();
+  const mainLabel =
+    alex === "live"
+      ? status === "speaking"
+        ? text.speaking.replace(/·.*/, "· Alex")
+        : text.live
+      : alex === "paused"
+        ? text.pausedBtn
+        : alex === "starting"
+          ? text.starting
+          : status === "listening"
+            ? text.listening
+            : status === "thinking"
+              ? text.thinking
+              : status === "speaking"
+                ? text.speaking
+                : text.talk;
 
   return (
     <>
       {welcome && !open && (
         <section
-          aria-label="FairPrice assistant"
+          aria-label="FairPrice guide"
           data-testid="assistant-welcome"
           className="fixed inset-x-3 bottom-3 z-50 flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[360px]"
         >
@@ -769,46 +907,31 @@ export function Assistant() {
               <MicIcon />
             </span>
             <div className="flex flex-col gap-1">
-              <h2 className="text-sm font-semibold text-ink">Need a hand? · मदद चाहिए?</h2>
+              <h2 className="text-sm font-semibold text-ink">Need a hand?</h2>
               <p className="text-xs leading-relaxed text-ink-2">
-                I&apos;m an AI guide. I can show you around, find a product, or help you sell yours.
-                <span lang="hi" className="block">मैं AI गाइड हूँ। मैं आपको टूर करा सकता हूँ, प्रोडक्ट ढूँढ सकता हूँ, या बेचने में मदद कर सकता हूँ।</span>
+                I&apos;m Alex, FairPrice&apos;s AI guide. I can show you around, find a product, or help you sell yours. Talk to me in your language.
               </p>
             </div>
           </div>
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => beginTour(suggestedLang())}
+              onClick={() => void beginTour("en")}
               data-testid="assistant-tour-start"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <PlayIcon />
-              {suggestedLang() === "hi" ? "3 मिनट का टूर देखें" : "Take the 3-minute tour"}
+              Take the 3-minute tour
             </button>
-            {(suggestedLang() === "hi" ? (["hi", "en"] as const) : (["en", "hi"] as const)).map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => begin(l)}
-                lang={l}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <MicIcon />
-                {l === "hi" ? "हिन्दी में बोलें" : "Talk in English"}
-              </button>
-            ))}
-            {extraLang && (
-              <button
-                type="button"
-                onClick={() => begin(extraLang.code)}
-                lang={extraLang.code}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <MicIcon />
-                {extraLang.label}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => void talk()}
+              data-testid="assistant-talk"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <MicIcon />
+              Talk to Alex
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -817,7 +940,7 @@ export function Assistant() {
               }}
               className="h-9 rounded-lg text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
             >
-              Explore on my own · खुद देखें
+              Explore on my own
             </button>
           </div>
         </section>
@@ -826,12 +949,8 @@ export function Assistant() {
       {!open && !welcome && (
         <button
           type="button"
-          onClick={() => {
-            setOpen(true);
-            startTask(talkTurns(window.location.pathname));
-            if (turnsRef.current.length === 0) setTurns([{ role: "assistant", text: ui(lang).greeting }]);
-          }}
-          aria-label="Open the FairPrice assistant"
+          onClick={() => void talk()}
+          aria-label="Talk to Alex, the FairPrice guide"
           data-testid="assistant-launcher"
           className="fixed right-4 bottom-4 z-50 grid size-14 place-items-center rounded-full bg-accent text-accent-ink shadow-card transition-colors hover:bg-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
@@ -852,27 +971,6 @@ export function Assistant() {
               <MicIcon />
             </span>
             <h2 className="flex-1 text-sm font-semibold text-ink">{text.title}</h2>
-            <div role="radiogroup" aria-label="Language" className="flex rounded-lg border border-line-strong p-0.5 text-xs">
-              {langChoices.map((c) => (
-                <button
-                  key={c.code}
-                  type="button"
-                  role="radio"
-                  aria-checked={lang === c.code}
-                  disabled={Boolean(tour)}
-                  onClick={() => {
-                    recognitionRef.current?.abort();
-                    hush();
-                    handsFreeRef.current = false;
-                    setStatus("idle");
-                    setLang(c.code);
-                  }}
-                  className={cx("rounded-md px-2 py-1 font-medium", lang === c.code ? "bg-accent text-accent-ink" : "text-ink-2 hover:text-ink")}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
             <button
               type="button"
               onClick={close}
@@ -883,9 +981,9 @@ export function Assistant() {
             </button>
           </header>
 
-          {/* Always mounted so the avatar can start on the first turn; shown only in video mode. */}
+          {/* Always mounted so Alex can draw into it as soon as he starts; shown only in video mode. */}
           <div className={cx("relative h-52 shrink-0 bg-surface-2", !video && "hidden")} data-testid="assistant-avatar">
-            <video ref={attachAvatarVideo} playsInline className="size-full object-cover object-[50%_38%]" aria-label={text.aiLabel} />
+            <video ref={attachAlexVideo} playsInline className="size-full object-cover object-[50%_38%]" aria-label={text.aiLabel} />
             <span className="absolute bottom-2 left-2 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-medium text-ink-2">{text.aiLabel}</span>
           </div>
 
@@ -989,12 +1087,13 @@ export function Assistant() {
           )}
 
           <footer className="flex flex-col gap-2 border-t border-line px-4 py-3">
-            {!tour && (
+            {(!tour || !alexOn) && (
               <button
                 type="button"
-                onClick={micPressed}
-                aria-pressed={status === "listening"}
-                disabled={status === "thinking"}
+                onClick={mainButton}
+                aria-pressed={alex === "live" || status === "listening"}
+                disabled={status === "thinking" || alex === "starting"}
+                data-testid="assistant-main"
                 className={cx(
                   "inline-flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60",
@@ -1002,7 +1101,7 @@ export function Assistant() {
                 )}
               >
                 <MicIcon />
-                {status === "listening" ? text.listening : status === "thinking" ? text.thinking : status === "speaking" ? text.speaking : text.tap}
+                {mainLabel}
               </button>
             )}
             <form

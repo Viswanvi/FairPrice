@@ -72,8 +72,8 @@ services:
       - key: DEMO_GEO_OVERRIDE
         value: "true"
 
-      # Video avatar (optional; Gemini Live on Vertex AI). Server only. Leave the key empty to
-      # keep the browser voice.
+      # Alex, the video avatar guide (Gemini Live on Vertex AI, served by server.mjs, which
+      # `npm start` runs). Server only. Leave the key empty to keep the earlier guide.
       - key: GOOGLE_API_KEY
         sync: false
       - key: GOOGLE_CLOUD_PROJECT

@@ -36,38 +36,39 @@ pay a single US price, and every pricing decision is recorded against its PayPal
    - if the price for the account's country is higher (VPN or mismatch), the order is voided
      and the buyer is offered the right price. **Nobody is charged a wrong amount.**
 
-## Voice assistant (English and Hindi)
+## Alex, the AI guide (video avatar)
 
-On the first visit, a small card offers **🎤 Talk in English**, **🎤 हिन्दी में बोलें** or
-**Explore on my own**. The assistant doesn't just answer questions: it **does the steps** for
-buyers and sellers.
+A small card offers **▶ Take the 3-minute tour**, **🎤 Talk to Alex** or **Explore on my own**.
+Nothing starts until the visitor taps. Alex is a live video avatar (Gemini Live on Vertex AI, the
+same setup as our GCS "Alex"): he hears the visitor through the microphone and answers in whatever
+language they speak. There is no language switch on screen.
 
-- **Buyers:** say "I want Figma templates" or "मुझे figma टेम्पलेट चाहिए". It searches the
-  products on sale, says the price for your country, opens the page, and points to the PayPal
-  button. After payment, it reads the result aloud.
-- **Sellers:**
-  - say "I want to sell my ebook". It opens sign-in (you type the password; it never hears it).
-  - It then fills in the new-product form from what you say, and presses **Continue**,
-    **Analyze audience** and **Generate fair prices**.
-  - It points to **Approve**, which only you can press.
+- **Buyers:** "I need a Figma template". Alex finds the best match, says what it is and its price
+  for the visitor, opens the page and points to the PayPal button. After payment, he reads the
+  result card aloud.
+- **Sellers:** "I want to sell my ebook". Sign-in is typed (Alex never hears the password); Alex
+  fills in the new-product form, presses **Continue**, **Analyze audience** and **Generate fair
+  prices**, and points to **Approve**, which only the seller presses.
+- **Tour:** fixed, reviewed lines (`lib/assistant/tour.ts`), in English or Hindi; "walk me through
+  the demo" starts it too. Pause, skip and stop by button, typing or voice.
 
 **How it works:**
-- **Listening:** the browser's speech recognition (Google's, in Chrome; Microsoft's, in Edge),
-  set to Indian English or Hindi, with live text on screen.
-- **Understanding:** Claude on the server (`POST /api/assistant`). It replies in the language
-  you spoke, and works through a fixed list of safe actions: search, open a page, fill the
-  product form, press a setup button, highlight something.
-- **Speaking:** the browser's built-in voices.
+- `server.mjs` runs Next.js plus a WebSocket bridge (`lib/alex/bridge.mjs`) at `/ws/alex`: mic
+  audio in, avatar video and captions out. The Google key stays on the server.
+- **Brain:** Gemini, with the **same rules and tools** as the earlier Claude assistant
+  (`lib/alex/gemini.ts` reuses `lib/assistant/prompt.ts` and `tools.ts`). The bridge fetches
+  them from an internal route, so a browser can't change them.
+- **Prices** come only from the server's tools (the approved table). The bridge flags any number
+  Alex says that no tool, visitor or app text gave him, and the page then asks the visitor to check
+  the price shown.
+- **Cost and network:** video only on a fast connection (4g, ≥ 5 Mbps, no data saver), for the
+  turns a task needs plus two, at most 5 minutes per visit; then voice. Alex pauses after 20 s of
+  silence or when the tab is hidden, and continues the same conversation on the next tap.
+- **Video / Voice / Text** switch in the panel. If Alex can't start, the earlier guide takes over
+  (Claude via `POST /api/assistant`, browser voice). Checkout never depends on either.
 
-**What it can never do:**
-- pay;
-- approve or edit prices;
-- handle passwords;
-- state a price the server didn't compute from the approved table.
-
-Seller-written text reaches it only as marked data. The endpoint is rate-limited.
-
-Talking needs Chrome or Edge and microphone permission; everyone can type instead.
+**What Alex can never do:** pay; approve or edit prices; handle passwords; state a price the
+server didn't compute from the approved table.
 
 ## Try it with sandbox buyers
 

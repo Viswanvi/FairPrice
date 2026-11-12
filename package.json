@@ -8,9 +8,9 @@
   },
   "scripts": {
     "postinstall": "node scripts/prepare-geoip.mjs",
-    "dev": "node scripts/prepare-geoip.mjs && next dev",
+    "dev": "node scripts/prepare-geoip.mjs && node server.mjs",
     "build": "node scripts/prepare-geoip.mjs && prisma generate && next build",
-    "start": "next start",
+    "start": "node server.mjs --prod",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint",
     "test": "vitest run",
@@ -42,6 +42,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
+    "ws": "^8.22.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {

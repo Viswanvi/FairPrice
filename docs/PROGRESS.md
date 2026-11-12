@@ -24,6 +24,8 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Decisions (newest first)
 
+- 2026-11-12 (avatar branch, decided by Vinoth): **Alex replaces the guide, with Gemini as the brain** (the GCS setup), started only from a button; no language switch on screen. This supersedes the spec's "avatar only reads the assistant's reply". Kept from the spec: the same rules and tools as the Claude assistant (`lib/alex/gemini.ts` reuses prompt.ts and tools.ts, fetched by the bridge from an internal route), prices only from server tools, network check, n+2 video turns, 5-minute cap, 20 s silence pause, video/voice/text switch, the fixed tour lines. Added: `server.mjs` custom server + `lib/alex/bridge.mjs` WebSocket bridge at /ws/alex (Next routes can't hold the socket); same-origin check, per-IP session limit, 20-minute session cap; the faithfulness check now reads spelled-out numbers ("sixteen") via `lib/avatar/numbers.mjs`. If Alex can't start, the earlier Claude + browser-voice guide takes over. The per-line reader (`/api/avatar/speak`) was removed.
+
 - 2026-11-12 (avatar branch): **Video avatar = Gemini Live on Vertex AI, one short session per spoken turn.** `POST /api/avatar/speak` opens the session on the server (key stays there), sends only FairPrice's text with a "read exactly" instruction and no tools, and streams fragmented MP4 back as NDJSON; the browser plays it with Media Source Extensions (ported from the GCS "Alex" player). Chosen over a WebSocket bridge (needs a custom Next server and a Render start-command change) and over ephemeral browser tokens (Gemini Developer API only; the avatar needs Vertex). Nothing streams while silent, so the spec's "pause after 20 s silence" and "one stream at a time" hold by construction. Latency: about 2 s to connect, 4–5 s to first video.
 - 2026-11-12: **Faithfulness check.** Gemini's own transcript of each turn must contain no number the text didn't (`lib/avatar/faithful.ts`); otherwise video is off for the visit. One failed video turn falls back to voice for that turn; a second turns video off (Gemini occasionally drops a session with 1011).
 - 2026-11-12: **Tour lines are fixed text in English and Hindi** (`lib/assistant/tour.ts`); a test checks every Hindi line has the same numbers as the English. Talk mode accepts any language code (schema + prompt widened; money rules unchanged).
@@ -166,6 +168,8 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 
 ## Last session summary
+
+- 2026-11-12 (later): Alex (Gemini brain) built and tried: talk + buy flow in English and Hindi with live video, server prices, product cards, "walk me through the demo", tour T1–T4 with Alex saying the lines. Production build + `node server.mjs --prod` checked. Checks: typecheck, lint, 455 unit + 37 Playwright tests pass. Not done: Alex with a real microphone (mic is blocked in the test browser), a sandbox purchase with Alex reading the result, the recording. Render: start command `npm start` now runs server.mjs; set GOOGLE_API_KEY and GOOGLE_CLOUD_PROJECT there before Alex can work on the hosted site.
 
 - 2026-11-12 (avatar branch, not on main): video avatar + guided tour built per docs/AVATAR_SPEC.md.
   - **Checks:** typecheck and lint pass; 449 unit tests and 34 Playwright tests pass (avatar mocked in Playwright).
