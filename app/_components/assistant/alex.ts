@@ -37,6 +37,10 @@ const VIDEO_STALL_MS = 10_000;
 const RECONNECT_TRIES = 3;
 
 let ws: WebSocket | null = null;
+/** The open socket has had Gemini's "ready": the watch timer only judges a session that is up. */
+let socketReady = false;
+/** Fails the socket still being set up when it is replaced or closed, so nothing waits on it forever. */
+let abortOpening: ((reason: string) => void) | null = null;
 let handlers: AlexHandlers | null = null;
 let setupMsg: { path: string; lang?: string } | null = null;
 let resumeHandle: string | null = null;
@@ -480,18 +484,34 @@ function openSocket(): Promise<void> {
   return new Promise((resolve, reject) => {
     const sock = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/alex");
     ws = sock;
+    socketReady = false;
     let ready = false;
+    let settled = false;
+    const fail = (reason: string) => {
+      if (settled) return;
+      settled = true;
+      if (abortOpening === fail) abortOpening = null;
+      reject(new Error(reason));
+    };
+    abortOpening = fail;
     const lost = (reason: string) => {
       if (ws !== sock) return;
       if (!ready) {
         ws = null;
-        reject(new Error(reason));
+        fail(reason);
         return;
       }
       void reconnect();
     };
-    // Never hang: a socket that doesn't become ready in 12 s counts as failed.
-    setTimeout(() => !ready && ws === sock && (sock.close(), lost("timeout")), 12_000);
+    // Never hang: a socket that doesn't become ready in 12 s counts as failed, even if it was replaced.
+    setTimeout(() => {
+      if (ready) return;
+      if (ws === sock) {
+        ws = null;
+        sock.close();
+      }
+      fail("timeout");
+    }, 12_000);
     sock.onopen = () =>
       sock.send(
         JSON.stringify({
@@ -509,6 +529,9 @@ function openSocket(): Promise<void> {
       const msg = JSON.parse(String(ev.data));
       if (msg.type === "ready" && !ready) {
         ready = true;
+        settled = true;
+        if (abortOpening === fail) abortOpening = null;
+        socketReady = true;
         mode = msg.mode === "audio" ? "audio" : "video";
         lastVideoAt = Date.now();
         lastActivity = Date.now();
@@ -519,7 +542,7 @@ function openSocket(): Promise<void> {
       if (msg.type === "error" && !ready) {
         ws = null;
         sock.close();
-        reject(new Error(String(msg.message || "failed")));
+        fail(String(msg.message || "failed"));
         return;
       }
       onMessage(msg);
@@ -530,6 +553,8 @@ function openSocket(): Promise<void> {
 function detachSocket() {
   const sock = ws;
   ws = null;
+  socketReady = false;
+  abortOpening?.("replaced"); // whoever waits for a socket still being set up gets an answer
   if (!sock) return;
   sock.onclose = null;
   sock.onerror = null;
@@ -583,7 +608,9 @@ export function setAlexMuted(on: boolean): void {
 function watch() {
   if (watchTimer) clearInterval(watchTimer);
   watchTimer = setInterval(() => {
-    if (!isAlexConnected() || reconnecting) return;
+    // Not while (re)connecting: until Gemini is ready there is no video yet and no activity, and
+    // pausing then would cut off the reconnect itself (the tour then waited for it forever).
+    if (!isAlexConnected() || reconnecting || !socketReady) return;
     if (mode === "video" && Date.now() - lastVideoAt > VIDEO_STALL_MS) return fallbackToAudio();
     const idle = Date.now() - lastActivity > SILENCE_PAUSE_MS && !turnActive && !pending;
     if (idle || document.visibilityState === "hidden") pauseAlex();
@@ -602,6 +629,7 @@ export function pauseAlex(): void {
 export async function resumeAlex(): Promise<void> {
   if (!paused || isAlexConnected()) return;
   paused = false;
+  lastActivity = Date.now(); // waking him is activity: the 20 s silence count starts again
   await openSocket();
   lastActivity = Date.now();
 }

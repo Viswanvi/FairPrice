@@ -169,6 +169,12 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Last session summary
 
+- 2026-11-12 (avatar test by Claude Code, production build, live DB read-only): two fixes.
+  - **Tour skipped the seller sign-in (T7) when signed out:** the address reads "/seller" for ~36 ms before the redirect to /seller/sign-in, and the tour took that as "signed in". Now `sellerArea()` (`lib/assistant/tour.ts`, unit-tested) needs the product list's `seller_home` marker; if neither page shows, or the visitor never signs in, the tour skips to T8.
+  - **Tour froze after Alex's 20 s silence pause** (e.g. T4 waiting for a PayPal payment): the watch timer paused Alex again while he was reconnecting, orphaning the reconnect, so the tour waited forever and Skip/Stop did nothing. `alex.ts`: no watch checks until Gemini is ready, waking counts as activity, and a replaced or timed-out socket always fails instead of hanging.
+  - **Verified in the browser (video forced on, mic blocked):** full tour on video with two >20 s waits, signed out (stops at T7) and signed in (T7a–T7d), tap-to-wake in Talk mode. Checks: typecheck, lint, 456 unit tests. Playwright not run (its setup writes to the live DB).
+  - **Notes:** the test browser reported 1.25 Mbps, so video needed a forced fast connection; the tour uses ~3.5 of the 5 video minutes per tab; reopening the panel restarts Alex in voice until Video is chosen again.
+
 - 2026-11-12 (Alex fixes): ported GCS hold (Pause: mic sends silence, nothing played or captioned until Resume), dropping the rest of a stopped turn, and quiet between tour lines. Fixed a second (browser) voice after skip/stop/pause: the browser voice now speaks only when Alex is really off. "pause"/"wait" (and Hindi) by voice; a Pause/Resume button in Talk mode. Checks: 455 unit + 39 Playwright tests pass.
 
 - 2026-11-12 (later): Alex (Gemini brain) built and tried: talk + buy flow in English and Hindi with live video, server prices, product cards, "walk me through the demo", tour T1–T4 with Alex saying the lines. Production build + `node server.mjs --prod` checked. Checks: typecheck, lint, 455 unit + 37 Playwright tests pass. Not done: Alex with a real microphone (mic is blocked in the test browser), a sandbox purchase with Alex reading the result, the recording. Render: start command `npm start` now runs server.mjs; set GOOGLE_API_KEY and GOOGLE_CLOUD_PROJECT there before Alex can work on the hosted site.
