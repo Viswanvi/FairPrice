@@ -158,15 +158,21 @@ export const TOUR: readonly TourStep[] = [
 ];
 
 /** Words that skip the current step or stop the tour, in each tour language. */
-export const TOUR_COMMANDS: Record<"skip" | "stop", readonly string[]> = {
+export type TourCommand = "skip" | "stop" | "pause" | "resume";
+
+export const TOUR_COMMANDS: Record<TourCommand, readonly string[]> = {
   skip: ["skip", "next", "स्किप", "छोड़ो", "छोड़ें", "आगे"],
   stop: ["stop", "end tour", "रुको", "रुकें", "बंद करो", "बंद करें"],
+  pause: ["pause", "wait", "hold on", "one moment", "रुकिए", "एक मिनट", "ज़रा रुको", "पॉज़"],
+  resume: ["continue", "resume", "go on", "carry on", "go ahead", "जारी रखो", "जारी रखें", "चलो", "आगे बढ़ो", "आगे बढ़िए", "शुरू करो"],
 };
 
-/** "skip", "stop" or null for something the visitor said during the tour. */
-export function tourCommand(heard: string): "skip" | "stop" | null {
+/** "skip", "stop", "pause", "resume" or null for something the visitor said (stop wins, then pause, then resume). */
+export function tourCommand(heard: string): TourCommand | null {
   const h = heard.toLowerCase();
   if (TOUR_COMMANDS.stop.some((w) => h.includes(w))) return "stop";
+  if (TOUR_COMMANDS.pause.some((w) => h.includes(w))) return "pause";
+  if (TOUR_COMMANDS.resume.some((w) => h.includes(w))) return "resume"; // before skip: "आगे बढ़ो" is "go on"
   if (TOUR_COMMANDS.skip.some((w) => h.includes(w))) return "skip";
   return null;
 }
@@ -190,7 +196,7 @@ export function isTourRequest(text: string): boolean {
  * True when the line being spoken itself contains a word for this command ("…or say skip"):
  * the microphone may be hearing the guide, not the visitor, so the command is ignored.
  */
-export function heardOwnLine(cmd: "skip" | "stop", line: string | null): boolean {
+export function heardOwnLine(cmd: TourCommand, line: string | null): boolean {
   if (!line) return false;
   const l = line.toLowerCase();
   return TOUR_COMMANDS[cmd].some((w) => l.includes(w));

@@ -16,11 +16,13 @@ const ALEX_ADDENDUM = `About you: your name is Alex. You are FairPrice's AI guid
 You hear the visitor through their microphone and reply out loud. Reply in the language they speak; if they switch language, switch with them. Never ask which language they want.
 
 Messages from the app (not the visitor) start with "APP:" or "SCRIPT:".
+- Never say the words "SCRIPT" or "APP" aloud; they are markers, not part of the text.
 - "SCRIPT:" means: say the text after it aloud exactly, word for word, in the language it is written in, then stop. Add nothing before or after it, and don't call tools for it.
 - "APP:" gives you a fact or an instruction from the page (for example, that the visitor opened the guide). Follow it briefly.
 
 If the visitor asks for a tour, a demo or a walkthrough, call start_tour and say nothing else.
-While the tour runs, if the visitor says "skip", "next" or "stop", say nothing: the app handles it.`;
+While the tour runs, if the visitor says "skip", "next", "stop" or "pause", say nothing: the app handles it.
+When the tour is paused (the visitor talked over you, or asked a question), answer their question briefly. When they ask to continue, carry on, go on or resume, in any language, or say they have no more questions, call resume_tour and say nothing else: the app sends you the next line.`;
 
 /** The full instruction for one Alex session: the shared rules, Alex's delivery, then the page context. */
 export function alexSystemInstruction(ctx: AssistantContextInput): string {
@@ -74,6 +76,11 @@ export function toGeminiSchema(s: JsonSchema): GeminiSchema {
 /** Tools the browser runs itself (no server data involved). */
 export const CLIENT_TOOLS: GeminiFunction[] = [
   { name: "start_tour", description: "Start the guided 3-minute tour of FairPrice when the visitor asks for a tour, demo or walkthrough." },
+  {
+    name: "resume_tour",
+    description:
+      "Continue the paused tour from where it stopped, when the visitor asks to continue, carry on, go on or resume (in any language), or has no more questions.",
+  },
 ];
 
 /** The same tools the Claude assistant has, plus start_tour, in Gemini's format. */

@@ -169,6 +169,8 @@ Claude Code updates this file at the end of every task. Keep it short and curren
 
 ## Last session summary
 
+- 2026-11-12 (Alex fixes): ported GCS hold (Pause: mic sends silence, nothing played or captioned until Resume), dropping the rest of a stopped turn, and quiet between tour lines. Fixed a second (browser) voice after skip/stop/pause: the browser voice now speaks only when Alex is really off. "pause"/"wait" (and Hindi) by voice; a Pause/Resume button in Talk mode. Checks: 455 unit + 39 Playwright tests pass.
+
 - 2026-11-12 (later): Alex (Gemini brain) built and tried: talk + buy flow in English and Hindi with live video, server prices, product cards, "walk me through the demo", tour T1–T4 with Alex saying the lines. Production build + `node server.mjs --prod` checked. Checks: typecheck, lint, 455 unit + 37 Playwright tests pass. Not done: Alex with a real microphone (mic is blocked in the test browser), a sandbox purchase with Alex reading the result, the recording. Render: start command `npm start` now runs server.mjs; set GOOGLE_API_KEY and GOOGLE_CLOUD_PROJECT there before Alex can work on the hosted site.
 
 - 2026-11-12 (avatar branch, not on main): video avatar + guided tour built per docs/AVATAR_SPEC.md.

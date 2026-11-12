@@ -63,6 +63,388 @@ test("Alex gives the tour word for word, waits at the PayPal step, and can be sk
   await expect(panel.getByText(line("T3"), { exact: true })).toHaveCount(1);
 });
 
+/** A fake Alex who starts every line but never finishes it (so the visitor cuts him off mid-line). */
+async function slowAlex(page: Page): Promise<string[]> {
+  const scripts: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        scripts.push(String(msg.text).slice(8));
+        ws.send(JSON.stringify({ type: "alex_text", text: "Hi! I'm the" })); // …and he keeps talking
+      }
+    });
+  });
+  return scripts;
+}
+
+/** Count lines the browser's own voice is asked to say. */
+async function countBrowserVoice(page: Page) {
+  await page.addInitScript(() => {
+    (window as unknown as { __spoken: number }).__spoken = 0;
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.speak = () => void (window as unknown as { __spoken: number }).__spoken++;
+    }
+  });
+}
+
+test("skipping or stopping Alex mid-line never brings in a second voice", async ({ page }) => {
+  await connection(page, SLOW);
+  await countBrowserVoice(page);
+  const scripts = await slowAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar).toContainText("Tour · 1/");
+  await expect.poll(() => scripts.length).toBe(1);
+
+  await bar.getByRole("button", { name: "Skip" }).click(); // cut off mid-line
+  await expect(bar).toContainText("Tour · 2/");
+  await expect.poll(() => scripts.length).toBe(2);
+  await bar.getByRole("button", { name: "Stop tour" }).click();
+  await expect(bar).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __spoken: number }).__spoken)).toBe(0);
+});
+
+test("Pause holds Alex: nothing new is said until Resume, then the step repeats", async ({ page }) => {
+  await connection(page, SLOW);
+  await countBrowserVoice(page);
+  const scripts = await slowAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect.poll(() => scripts.length).toBe(1);
+
+  await bar.getByRole("button", { name: "Pause" }).click();
+  await expect(bar.getByRole("button", { name: "Resume" })).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect(scripts.length).toBe(1); // held: no new line
+  await bar.getByRole("button", { name: "Resume" }).click();
+  await expect.poll(() => scripts.length).toBe(2);
+  expect(scripts[1]).toBe(line("T1")); // the paused step starts again
+  expect(await page.evaluate(() => (window as unknown as { __spoken: number }).__spoken)).toBe(0);
+});
+
+/**
+ * Like Gemini: the visitor talks over Alex, so he is cut off at once ("interrupted"), and what they
+ * said arrives a moment later as a transcript.
+ */
+async function bargeInAlex(page: Page, said: string): Promise<string[]> {
+  const scripts: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        scripts.push(String(msg.text).slice(8));
+        if (scripts.length > 1) return; // only the first line is talked over
+        ws.send(JSON.stringify({ type: "alex_text", text: "Hi! I'm the" }));
+        setTimeout(() => ws.send(JSON.stringify({ type: "interrupted" })), 300);
+        setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: said })), 1100);
+      }
+    });
+  });
+  return scripts;
+}
+
+for (const [said, expectBar] of [
+  ["pause", "Tour · 1/"],
+  ["wait", "Tour · 1/"],
+] as const) {
+  test(`saying "${said}" over Alex pauses the SAME step (it doesn't skip first)`, async ({ page }) => {
+    await connection(page, SLOW);
+    await countBrowserVoice(page);
+    const scripts = await bargeInAlex(page, said);
+    await page.goto("/");
+    await page.getByTestId("assistant-tour-start").click();
+    const bar = page.getByTestId("assistant-tour");
+    await expect(bar.getByRole("button", { name: "Resume" })).toBeVisible();
+    await expect(bar).toContainText(expectBar);
+    await page.waitForTimeout(1500);
+    expect(scripts.length).toBe(1); // the next line was never started
+    expect(await page.evaluate(() => (window as unknown as { __spoken: number }).__spoken)).toBe(0);
+  });
+}
+
+for (const said of ["resume", "continue", "जारी रखो"]) {
+  test(`saying "${said}" over a playing line starts that line again; the tour does not pause`, async ({ page }) => {
+    await connection(page, SLOW);
+    const scripts = await bargeInAlex(page, said);
+    await page.goto("/");
+    await page.getByTestId("assistant-tour-start").click();
+    const bar = page.getByTestId("assistant-tour");
+    await expect.poll(() => scripts.length).toBe(2);
+    // The same step, from the start, in the language they just spoke.
+    const t1 = TOUR.find((s) => s.id === "T1")!.line;
+    expect(scripts[1]).toBe(/[ऀ-ॿ]/.test(said) ? t1.hi : t1.en);
+    await expect(bar).toContainText(/(Tour|टूर) · 1\//);
+    await expect(bar.getByRole("button", { name: "Resume" })).toHaveCount(0);
+  });
+}
+
+test("after a question pauses the tour, Alex's resume_tour (GCS resume_demo) carries on", async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts: string[] = [];
+  const toolResults: unknown[] = [];
+  let socket: { send: (s: string) => void } | null = null;
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    socket = ws;
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "tool_response") toolResults.push(msg.responses[0].response);
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        scripts.push(String(msg.text).slice(8));
+        if (scripts.length > 1) return;
+        ws.send(JSON.stringify({ type: "alex_text", text: "Hi! I'm the" }));
+        setTimeout(() => ws.send(JSON.stringify({ type: "interrupted" })), 300);
+        setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: "how much is it in India?" })), 900);
+      }
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar.getByRole("button", { name: "Resume" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("assistant-panel")).toContainText("I heard something, so I paused");
+  // The visitor says "okay, let's carry on" in their own words; Alex (Gemini) calls resume_tour.
+  socket!.send(JSON.stringify({ type: "tool_call", calls: [{ id: "r1", name: "resume_tour", args: {} }] }));
+  await expect.poll(() => scripts.length).toBe(2);
+  expect(scripts[1]).toBe(line("T1"));
+  expect(toolResults[0]).toMatchObject({ ok: true });
+  await expect(bar.getByRole("button", { name: "Pause" })).toBeVisible();
+});
+
+test('"skip" by voice: one step only, no pause from Gemini\'s stray turn end, no "SCRIPT:" in the chat', async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        scripts.push(String(msg.text).slice(8));
+        if (scripts.length === 1) {
+          // The visitor says "skip please" over line 1; the words arrive in two pieces.
+          ws.send(JSON.stringify({ type: "alex_text", text: "Hi! I'm the" }));
+          setTimeout(() => ws.send(JSON.stringify({ type: "interrupted" })), 300);
+          setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: "skip" })), 900);
+          setTimeout(() => ws.send(JSON.stringify({ type: "user_text", text: " please" })), 1300);
+        } else if (scripts.length === 2) {
+          // Line 2: he reads the marker aloud, and Gemini ends its own reply to "skip" (a stray interrupt).
+          ws.send(JSON.stringify({ type: "alex_text", text: "SCRIPT: First, how" }));
+          setTimeout(() => ws.send(JSON.stringify({ type: "interrupted" })), 200);
+          setTimeout(() => {
+            ws.send(JSON.stringify({ type: "alex_text", text: " prices are set." }));
+            ws.send(JSON.stringify({ type: "turn_complete" }));
+          }, 1200);
+        }
+      }
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar).toContainText("Tour · 3/"); // 1 → (skip) → 2 said in full → 3
+  await expect.poll(() => scripts.length).toBe(3);
+  expect(scripts).toEqual([line("T1"), line("T2"), line("T3")]); // each once: no double skip, no repeat
+  await expect(bar.getByRole("button", { name: "Resume" })).toHaveCount(0);
+  await expect(page.getByTestId("assistant-panel")).not.toContainText("SCRIPT");
+});
+
+test("a line cut off by noise (nobody spoke) simply starts again", async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts: string[] = [];
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text" && String(msg.text).startsWith("SCRIPT: ")) {
+        scripts.push(String(msg.text).slice(8));
+        ws.send(JSON.stringify({ type: "alex_text", text: "Hi! I'm" }));
+        if (scripts.length === 1) setTimeout(() => ws.send(JSON.stringify({ type: "interrupted" })), 300);
+        else ws.send(JSON.stringify({ type: "turn_complete" }));
+      }
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  await expect.poll(() => scripts.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(3);
+  expect(scripts.slice(0, 3)).toEqual([line("T1"), line("T1"), line("T2")]); // line 1 again, then on
+  await expect(page.getByTestId("assistant-tour").getByRole("button", { name: "Resume" })).toHaveCount(0);
+});
+
+test('saying "skip" over Alex skips exactly one step', async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts = await bargeInAlex(page, "skip");
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  await expect(page.getByTestId("assistant-tour")).toContainText("Tour · 2/");
+  await expect.poll(() => scripts.length).toBe(2);
+  expect(scripts[1]).toBe(line("T2"));
+});
+
+test("talking over Alex with a question pauses the tour so he can answer; Resume continues", async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts = await bargeInAlex(page, "what does this cost in India?");
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar.getByRole("button", { name: "Resume" })).toBeVisible({ timeout: 10_000 });
+  await expect(bar).toContainText("Tour · 1/");
+  await bar.getByRole("button", { name: "Resume" }).click();
+  await expect.poll(() => scripts.length).toBe(2);
+  expect(scripts[1]).toBe(line("T1")); // the step starts again
+});
+
+/**
+ * A stand-in for Chrome's speech recognition: it "hears" whatever window.__say holds (once), so the
+ * local "continue" listener that runs while Alex is paused can be tested headless.
+ */
+async function fakeBrowserEars(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __say: string; SpeechRecognition: unknown; webkitSpeechRecognition: unknown };
+    w.__say = "";
+    class FakeRecognition {
+      lang = "";
+      interimResults = false;
+      continuous = false;
+      maxAlternatives = 1;
+      onresult: ((e: unknown) => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      private timer: ReturnType<typeof setTimeout> | null = null;
+      start() {
+        this.timer = setTimeout(() => {
+          const said = w.__say;
+          w.__say = "";
+          if (said) this.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: said }], { isFinal: true })] });
+          this.onend?.();
+        }, 200);
+      }
+      stop() {
+        this.abort();
+      }
+      abort() {
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        this.onend?.();
+      }
+    }
+    w.SpeechRecognition = FakeRecognition;
+    w.webkitSpeechRecognition = FakeRecognition;
+  });
+}
+
+const say = (page: Page, words: string) => page.evaluate((s) => ((window as unknown as { __say: string }).__say = s), words);
+
+test('saying "continue" carries on a tour paused with the Pause button', async ({ page }) => {
+  await connection(page, SLOW);
+  await fakeBrowserEars(page);
+  const scripts = await slowAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect.poll(() => scripts.length).toBe(1);
+  await bar.getByRole("button", { name: "Pause" }).click();
+  await expect(page.getByTestId("assistant-panel")).toContainText("Say “continue”");
+  await say(page, "okay continue");
+  await expect(bar.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect.poll(() => scripts.length).toBe(2);
+});
+
+test('after saying "pause" over Alex, saying "continue" carries on', async ({ page }) => {
+  await connection(page, SLOW);
+  await fakeBrowserEars(page);
+  const scripts = await bargeInAlex(page, "pause");
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar.getByRole("button", { name: "Resume" })).toBeVisible();
+  await say(page, "जारी रखो");
+  await expect.poll(() => scripts.length).toBe(2);
+  expect(scripts[1]).toBe(line("T1"));
+});
+
+test('in Talk mode, Pause holds Alex and saying "continue" (or typing it) releases him', async ({ page }) => {
+  await connection(page, SLOW);
+  await fakeBrowserEars(page);
+  await slowAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-welcome").getByRole("button", { name: "Talk to Alex" }).click();
+  const holdButton = page.getByTestId("assistant-hold");
+  await holdButton.click();
+  await expect(holdButton).toHaveText("Resume");
+  await say(page, "continue please");
+  await expect(holdButton).toHaveText("Pause");
+});
+
+test("after 20 s of silence Alex pauses; just speaking wakes him and he gets what was said", async ({ page }) => {
+  test.setTimeout(90_000);
+  await connection(page, SLOW);
+  await fakeBrowserEars(page);
+  const sent: string[] = [];
+  let sockets = 0;
+  await page.routeWebSocket("**/ws/alex", (ws) => {
+    sockets++;
+    ws.onMessage((raw) => {
+      if (typeof raw !== "string") return;
+      const msg = JSON.parse(raw);
+      if (msg.type === "setup") ws.send(JSON.stringify({ type: "ready", mode: "audio" }));
+      else if (msg.type === "text") sent.push(String(msg.text));
+    });
+  });
+  await page.goto("/");
+  await page.getByTestId("assistant-welcome").getByRole("button", { name: "Talk to Alex" }).click();
+  const main = page.getByTestId("assistant-main");
+  await expect(main).toHaveText(/Alex is listening/);
+  await expect(main).toHaveText(/Alex paused · talk or tap/, { timeout: 30_000 }); // 20 s of silence
+  await say(page, "I need a figma template");
+  await expect(main).toHaveText(/Alex is listening/);
+  await expect.poll(() => sent.at(-1)).toBe("I need a figma template");
+  expect(sockets).toBe(2); // the same conversation, reconnected
+  await expect(page.getByTestId("assistant-panel")).toContainText("I need a figma template");
+});
+
+test('when Alex has gone quiet at a waiting step (20 s), saying "skip" still skips and wakes him', async ({ page }) => {
+  test.setTimeout(90_000);
+  await connection(page, SLOW);
+  await fakeBrowserEars(page);
+  const alex = await fakeAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect(bar).toContainText("Tour · 4/");
+  await expect(page.getByTestId("assistant-panel")).toContainText("Waiting for you");
+  await expect.poll(() => page.evaluate(() => document.querySelector("[data-testid=assistant-main]") === null), { timeout: 5000 }).toBe(true);
+  await page.waitForTimeout(24_000); // the 20 s silence pause closes Alex's stream
+  await expect(page.getByTestId("assistant-panel")).not.toContainText("just talk to continue");
+  await say(page, "skip");
+  await expect(bar).toContainText("Tour · 5/");
+  await expect.poll(() => alex.scripts.at(-1)).toBe(line("T5")); // he woke up and said the next line
+  expect(alex.setup.length).toBe(2); // reconnected once
+  expect(alex.scripts.filter((s) => s === line("T5")).length).toBe(1);
+});
+
+test("typing 'continue' carries on a paused tour", async ({ page }) => {
+  await connection(page, SLOW);
+  const scripts = await slowAlex(page);
+  await page.goto("/");
+  await page.getByTestId("assistant-tour-start").click();
+  const bar = page.getByTestId("assistant-tour");
+  await expect.poll(() => scripts.length).toBe(1);
+  await bar.getByRole("button", { name: "Pause" }).click();
+  await page.getByTestId("assistant-panel").getByPlaceholder("Or type here…").fill("continue");
+  await page.getByTestId("assistant-panel").getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => scripts.length).toBe(2);
+});
+
 test("typing 'stop' or pressing Stop tour ends the tour", async ({ page }) => {
   await connection(page, FAST);
   await fakeAlex(page);

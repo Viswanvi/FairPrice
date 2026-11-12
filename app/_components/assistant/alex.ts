@@ -10,7 +10,11 @@
  */
 
 export type AlexMode = "video" | "audio";
-export type PresentResult = "done" | "interrupted" | "closed";
+/**
+ * How a line ended: "done"; "interrupted" = the visitor talked over him (Gemini's voice detection);
+ * "stopped" = stopped from the page (skip / stop / pause button); "closed" = the session ended.
+ */
+export type PresentResult = "done" | "interrupted" | "stopped" | "closed";
 
 export interface AlexHandlers {
   /** Run a tool; the object returned is sent back to Alex as its result. */
@@ -51,6 +55,20 @@ let outCtx: AudioContext | null = null;
 let nextAudioTime = 0;
 const audioSources = new Set<AudioBufferSourceNode>();
 
+// From GCS: hold (the mic sends silence and nothing Alex says is played until released), a cut-off
+// turn whose remaining words are dropped, and quiet between tour lines (anything new Alex starts on
+// his own right after a line is neither played nor captioned, until the next line or 8 s).
+let micHeld = false;
+let outputHeld = false;
+let dropTurn = false;
+let quietUntil = 0;
+const QUIET_MAX_MS = 8000;
+const quiet = () => Date.now() < quietUntil;
+// A new line cut in on an older turn: that turn's last chunks are dropped (800 ms at most).
+let dropOldTurnUntil = 0;
+/** Nothing Alex generates right now may be heard or shown. */
+const outputBlocked = () => outputHeld || dropTurn || quiet() || Date.now() < dropOldTurnUntil;
+
 let turnActive = false;
 let alexLine = "";
 let userLine = "";
@@ -60,8 +78,23 @@ let pending: { resolve: (r: PresentResult) => void } | null = null;
 // ponytail: time window, track turn ids if Gemini ever exposes them
 const OLD_TURN_WINDOW_MS = 1500;
 let selfInterruptUntil = 0;
+/** A turn was still running when the new line was sent: its end (just after) isn't the new line's. */
+let oldTurnOpen = false;
+const isOldTurnEnd = () => {
+  if (!oldTurnOpen || Date.now() >= selfInterruptUntil) return false;
+  oldTurnOpen = false;
+  return true;
+};
 
-const spokenWords = (s: string) => s.replace(/<[a-z][^>]*(>|$)/gi, "").replace(/\{[a-z][^}]*(\}|$)/gi, "").trim();
+// Gemini's transcript placeholders ("<noise>", "{pause}") and our own markers, should he read one aloud.
+const spokenWords = (s: string) =>
+  s
+    .replace(/<[a-z][^>]*(>|$)/gi, "")
+    .replace(/\{[a-z][^}]*(\}|$)/gi, "")
+    .replace(/^\s*(script|app)\s*:\s*/i, "")
+    .trim();
+/** When the visitor's words last arrived (their speech makes Gemini start a reply turn of its own). */
+let lastUserTextAt = 0;
 
 export const isAlexConnected = (): boolean => !!ws && ws.readyState === WebSocket.OPEN;
 export const isAlexPaused = (): boolean => paused;
@@ -211,8 +244,9 @@ function onVideoChunk(b64: string) {
 }
 
 function onAudioChunk(b64: string, mime: string) {
-  if (muted) return;
+  if (muted || outputBlocked()) return;
   if (!outCtx) outCtx = new AudioContext();
+  if (outCtx.state === "suspended") void outCtx.resume(); // never play into a suspended (silent) player
   const rate = parseInt((mime.match(/rate=(\d+)/) || [])[1] || "24000", 10);
   const bytes = fromBase64(b64);
   const pcm = new Int16Array(bytes.buffer, 0, bytes.length >> 1);
@@ -250,7 +284,7 @@ function silence() {
 }
 
 function unmute() {
-  if (videoEl && !muted) videoEl.muted = false;
+  if (videoEl && !muted && !outputBlocked()) videoEl.muted = false;
 }
 
 // ---- turns ----
@@ -268,6 +302,15 @@ function endTurn(result: PresentResult, delayMs: number) {
   }, delayMs);
 }
 
+/** A stopped turn is over: close its caption bubble (the next words start a new one). */
+function endDroppedTurn() {
+  const said = spokenWords(alexLine).length > 0;
+  turnActive = false;
+  alexLine = "";
+  if (said) handlers?.onTurnComplete();
+  setTimeout(unmute, 300);
+}
+
 function onMessage(msg: { type: string; [k: string]: unknown }) {
   switch (msg.type) {
     case "avatar_video":
@@ -278,6 +321,14 @@ function onMessage(msg: { type: string; [k: string]: unknown }) {
       break;
     case "alex_text": {
       lastActivity = Date.now();
+      if (outputBlocked()) {
+        turnActive = true; // he is generating, just not heard: the turn's end still clears dropTurn
+        break;
+      }
+      if (dropOldTurnUntil) {
+        dropOldTurnUntil = 0; // the new line has started
+        unmute();
+      }
       if (!turnActive) {
         turnActive = true;
         userLine = "";
@@ -292,6 +343,7 @@ function onMessage(msg: { type: string; [k: string]: unknown }) {
     }
     case "user_text": {
       lastActivity = Date.now();
+      lastUserTextAt = Date.now();
       userLine += String(msg.text);
       const said = spokenWords(userLine);
       if (said) handlers?.onCaption("user", said);
@@ -299,14 +351,27 @@ function onMessage(msg: { type: string; [k: string]: unknown }) {
     }
     case "interrupted":
       silence();
+      if (dropTurn) {
+        dropTurn = false; // the cut-off turn is over
+        endDroppedTurn();
+        break;
+      }
       setTimeout(unmute, 500);
-      if (Date.now() < selfInterruptUntil) {
+      if (isOldTurnEnd()) {
         turnActive = false;
         alexLine = "";
-      } else endTurn("interrupted", 0);
+      } else {
+        dropOldTurnUntil = Date.now() + 800; // the cut-off line's last caption pieces aren't shown
+        endTurn("interrupted", 0); // the visitor talked over him
+      }
       break;
     case "turn_complete":
-      if (Date.now() < selfInterruptUntil && !pending) {
+      if (dropTurn) {
+        dropTurn = false; // the rest of a stopped turn was dropped; Alex is quiet again
+        endDroppedTurn();
+        break;
+      }
+      if (isOldTurnEnd()) {
         turnActive = false;
         alexLine = "";
       } else endTurn("done", Math.round(playbackRemaining() * 1000));
@@ -364,6 +429,7 @@ async function startMic(): Promise<boolean> {
     if (!isAlexConnected()) return;
     const f = e.inputBuffer.getChannelData(0);
     const pcm = new Int16Array(f.length);
+    if (micHeld) return void ws!.send(pcm.buffer); // on hold: Gemini hears silence
     for (let i = 0; i < f.length; i++) {
       const s = Math.max(-1, Math.min(1, f[i]));
       pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
@@ -376,9 +442,12 @@ async function startMic(): Promise<boolean> {
 // ---- connection ----
 
 function resetTurnState() {
+  dropTurn = false;
+  quietUntil = 0;
   turnActive = false;
   alexLine = "";
   selfInterruptUntil = 0;
+  oldTurnOpen = false;
   pending?.resolve("closed");
   pending = null;
   silence();
@@ -523,6 +592,11 @@ export async function resumeAlex(): Promise<void> {
  */
 export async function connectAlex(opts: { lang?: string; audioOnly: boolean }, h: AlexHandlers): Promise<{ mic: boolean }> {
   closeAlex();
+  // Unlock audio now, inside the visitor's tap: if Alex later switches to voice only (budget used,
+  // slow network, Voice chosen) his audio plays through this player, which Chrome would otherwise
+  // start suspended (silent) when it's created later without a tap.
+  if (!outCtx) outCtx = new AudioContext();
+  void outCtx.resume();
   handlers = h;
   setupMsg = { path: "/", lang: opts.lang };
   resumeHandle = null;
@@ -550,28 +624,80 @@ export async function tellAlex(text: string): Promise<void> {
 export async function presentToAlex(line: string): Promise<PresentResult> {
   if (paused) await resumeAlex().catch(() => {});
   if (!isAlexConnected()) return "closed";
-  if (turnActive) silence();
+  quietUntil = 0;
+  // A turn may still be open on Gemini's side: one we cut in on, or its own reply to what the
+  // visitor just said ("skip"). Its end arrives right after this line is sent and isn't this line's.
+  oldTurnOpen = turnActive || dropTurn || Date.now() - lastUserTextAt < 3000;
+  if (turnActive) {
+    silence(); // cut in on whatever he was still generating; drop its tail
+    dropOldTurnUntil = Date.now() + 800;
+  }
+  dropTurn = false;
+  turnActive = false;
+  userLine = ""; // what they say from now on is a new utterance
   pending?.resolve("closed");
   return new Promise((resolve) => {
-    pending = { resolve };
+    const mine = { resolve };
+    pending = mine;
     selfInterruptUntil = Date.now() + OLD_TURN_WINDOW_MS;
     lastActivity = Date.now();
     send({ type: "text", text: `SCRIPT: ${line}` });
+    // If Gemini dropped the line (nothing said for 10 s), don't hang the tour: report it as cut off.
+    const sentAt = Date.now();
+    const stall = setInterval(() => {
+      if (pending !== mine) return clearInterval(stall);
+      if (Date.now() - Math.max(sentAt, lastActivity) > 10_000) {
+        clearInterval(stall);
+        pending = null;
+        resolve("interrupted");
+      }
+    }, 1000);
   });
 }
 
-/** Stop Alex's current speech (the visitor pressed stop / skip). */
+/**
+ * Stop Alex's current speech (the visitor pressed stop / skip / pause). The rest of the turn he is
+ * still generating is dropped (not played, not captioned) until Gemini ends it, so he doesn't carry
+ * on after a short gap. Resolves a waiting line as "interrupted": the visitor stopped it, so nothing
+ * else (such as the browser voice) should say it instead.
+ */
 export function hushAlex(): void {
   silence();
-  if (turnActive) selfInterruptUntil = Date.now() + OLD_TURN_WINDOW_MS;
-  pending?.resolve("closed");
+  if (turnActive) dropTurn = true;
+  quietUntil = 0;
+  pending?.resolve("stopped");
   pending = null;
-  setTimeout(unmute, 600);
+}
+
+/**
+ * Hold (GCS): the mic sends silence, so nothing said in the room reaches Gemini, and nothing Alex
+ * says is played or shown until released. Used by the tour's Pause and the Talk-mode Pause button.
+ */
+export function setAlexHold(on: boolean): void {
+  micHeld = on;
+  outputHeld = on;
+  quietUntil = 0;
+  if (on) {
+    silence();
+    if (turnActive) dropTurn = true;
+    pending?.resolve("stopped");
+    pending = null;
+    handlers?.onSpeaking(false);
+  } else unmute();
+}
+
+export const isAlexHeld = (): boolean => outputHeld;
+
+/** After a tour line: keep Alex quiet until the next line (at most 8 s), so he doesn't add his own talk. */
+export function quietAlexUntilNextLine(): void {
+  quietUntil = Date.now() + QUIET_MAX_MS;
 }
 
 export function closeAlex(): void {
   reconnecting = false;
   paused = false;
+  micHeld = false;
+  outputHeld = false;
   if (watchTimer) clearInterval(watchTimer);
   watchTimer = null;
   detachSocket();

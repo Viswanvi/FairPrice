@@ -12,9 +12,9 @@ describe("Alex (Gemini brain)", () => {
     expect(s).toContain("Current page: /p/x");
   });
 
-  it("offers exactly the assistant's tools, plus start_tour, and never an approve or pay tool", () => {
+  it("offers exactly the assistant's tools, plus start_tour and resume_tour, and never an approve or pay tool", () => {
     const names = alexTools().map((t) => t.name);
-    expect(names).toEqual([...ASSISTANT_TOOLS.map((t) => t.name), "start_tour"]);
+    expect(names).toEqual([...ASSISTANT_TOOLS.map((t) => t.name), "start_tour", "resume_tour"]);
     expect(names.join(" ")).not.toMatch(/approve|pay|capture|refund|password/);
   });
 

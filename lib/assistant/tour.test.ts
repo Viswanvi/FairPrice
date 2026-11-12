@@ -96,5 +96,14 @@ describe("tour", () => {
     expect(tourCommand("स्किप करो")).toBe("skip");
     expect(tourCommand("रुको")).toBe("stop");
     expect(tourCommand("what is this")).toBeNull();
+    expect(tourCommand("wait a second")).toBe("pause");
+    expect(tourCommand("please pause")).toBe("pause");
+    expect(tourCommand("एक मिनट")).toBe("pause");
+    expect(tourCommand("stop, wait")).toBe("stop"); // stop wins
+    expect(tourCommand("okay, continue")).toBe("resume");
+    expect(tourCommand("please go on")).toBe("resume");
+    expect(tourCommand("जारी रखो")).toBe("resume");
+    expect(tourCommand("आगे बढ़ो")).toBe("resume"); // "go on", not skip
+    expect(tourCommand("आगे")).toBe("skip");
   });
 });

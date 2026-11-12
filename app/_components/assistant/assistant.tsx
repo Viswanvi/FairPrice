@@ -18,11 +18,15 @@ import {
   isAlexConnected,
   isAlexPaused,
   presentToAlex,
+  isAlexHeld,
+  quietAlexUntilNextLine,
   resumeAlex,
   setAlexAudioOnly,
+  setAlexHold,
   setAlexMuted,
   tellAlex,
   type AlexHandlers,
+  type PresentResult,
 } from "./alex";
 import { addVideoMs, noteVideoFailure, startVideoTask, takeVideoTurn, videoAvailable, videoTurnsLeft } from "./avatar";
 import { CHECKOUT_RESULT_EVENT } from "./events";
@@ -86,7 +90,8 @@ const UI_EN = {
   title: "Alex · FairPrice AI guide",
   talk: "Talk to Alex",
   live: "Alex is listening · tap to end",
-  pausedBtn: "Alex paused · tap to continue",
+  pausedBtn: "Alex paused · talk or tap to continue",
+  pausedOverlay: "Paused · just talk to continue",
   starting: "Starting Alex…",
   tap: "Tap to speak",
   listening: "Listening…",
@@ -110,6 +115,10 @@ const UI_EN = {
   alexLost: "Alex lost the connection. Tap to talk again.",
   checkPrice: "Please check the price shown on the page: it is the one you pay.",
   pausedNote: "Alex paused because it went quiet. Tap to continue.",
+  hold: "Pause",
+  unhold: "Resume",
+  heldNote: "Alex is paused: he can't hear you. Say “continue” or press Resume.",
+  tourPausedNote: "I heard something, so I paused. Say “continue” to go on, or press Resume.",
   tour: "Tour",
   pause: "Pause",
   resume: "Resume",
@@ -130,7 +139,8 @@ const UI: Record<string, UiText> = {
     title: "Alex · FairPrice AI गाइड",
     talk: "Alex से बात करें",
     live: "Alex सुन रहा है · बंद करने के लिए टैप करें",
-    pausedBtn: "Alex रुका है · जारी रखने के लिए टैप करें",
+    pausedBtn: "Alex रुका है · बोलें या टैप करें",
+    pausedOverlay: "रुका है · बस बोलिए",
     starting: "Alex शुरू हो रहा है…",
     tap: "बोलने के लिए टैप करें",
     listening: "सुन रहा हूँ…",
@@ -154,6 +164,10 @@ const UI: Record<string, UiText> = {
     alexLost: "Alex का कनेक्शन टूट गया। फिर से बात करने के लिए टैप करें।",
     checkPrice: "कृपया पेज पर दिखी कीमत देखें: आप वही कीमत देंगे।",
     pausedNote: "शांति होने की वजह से Alex रुक गया। जारी रखने के लिए टैप करें।",
+    hold: "रोकें",
+    unhold: "जारी रखें",
+    heldNote: "Alex रुका है: वह आपको नहीं सुन सकता। “जारी रखो” बोलें या 'जारी रखें' दबाएँ।",
+    tourPausedNote: "कुछ सुनाई दिया, इसलिए मैं रुक गया। आगे बढ़ने के लिए “जारी रखो” बोलें या 'जारी रखें' दबाएँ।",
     tour: "टूर",
     pause: "रोकें",
     resume: "जारी रखें",
@@ -220,7 +234,8 @@ async function waitUntil<T>(get: () => T | null, timeoutMs: number, signal?: Abo
 const marker = (name: string) => document.querySelector<HTMLElement>(`[data-assistant-highlight="${name}"]`);
 
 type TourState = { index: number; paused: boolean; waiting: boolean };
-type StepEnd = "next" | "skip" | "stop" | "pause";
+/** "listen": the visitor talked over a tour line without a command; the tour waits (Alex answers). */
+type StepEnd = "next" | "skip" | "stop" | "pause" | "listen" | "repeat";
 
 export function Assistant() {
   const isClient = useSyncExternalStore(noSubscribe, () => true, () => false);
@@ -238,6 +253,8 @@ export function Assistant() {
   const [tour, setTour] = useState<TourState | null>(null);
   const [output, setOutput] = useState<Output>(() => (typeof window === "undefined" ? "video" : loadOutput()));
   const [alex, setAlex] = useState<AlexState>("off");
+  /** Alex is on hold (Pause): hears nothing, says nothing. */
+  const [held, setHeld] = useState(false);
 
   const recognitionRef = useRef<RecognitionLike | null>(null);
   const handsFreeRef = useRef(false);
@@ -258,6 +275,18 @@ export function Assistant() {
   const videoSinceRef = useRef(0);
   /** The latest beginTour, so callbacks memoised earlier can start the tour. */
   const beginTourRef = useRef<(l: AssistantLang) => void>(() => {});
+  const lastUserSpokeRef = useRef(0);
+  /** The part of the visitor's current utterance whose command was already acted on. */
+  const cmdSeenRef = useRef("");
+  /** Times in a row a tour line was cut off without the visitor saying anything (noise, echo). */
+  const noiseRef = useRef({ step: "", count: 0 });
+  /** The visitor spoke while Alex slept after silence: wake him and pass on what they said. */
+  const wakeByVoiceRef = useRef<(heard: string) => Promise<void>>(async () => {});
+  /** "Continue" said by the visitor: carry on the paused tour, or release Alex from hold. */
+  const resumeByVoiceRef = useRef<() => void>(() => {});
+  const stopTourRef = useRef<() => void>(() => {});
+  /** Put Alex on hold or release him (set below; used by the caption handler). */
+  const holdRef = useRef<(on: boolean) => void>(() => {});
   /** The latest endStep, for Alex's caption handler (set up before endStep exists). */
   const endStepRef = useRef<(end: StepEnd) => void>(() => {});
   const tourRef = useRef<{ token: number; step: AbortController | null; end: StepEnd | null; resume: (() => void) | null }>({
@@ -343,6 +372,12 @@ export function Assistant() {
         setTimeout(() => beginTourRef.current(langRef.current), 0);
         return { ok: true, note: "The tour is starting now. Say nothing." };
       }
+      if (name === "resume_tour") {
+        // GCS resume_demo: Alex understood "let's continue", in whatever words or language.
+        if (!tourRef.current.resume && !tourRef.current.step) return { ok: false, note: "No tour is running. Say nothing." };
+        setTimeout(() => resumeByVoiceRef.current(), 0);
+        return { ok: true, note: "Continuing the tour now. Say nothing; the app sends you the next line." };
+      }
       const res = await fetch("/api/alex/tool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -367,14 +402,22 @@ export function Assistant() {
         onCaption: (who, text) => {
           caption(who, text);
           if (who === "user") {
+            lastUserSpokeRef.current = Date.now();
             const l = spokenLang(text);
             if (l !== langRef.current) {
               langRef.current = l;
               setLang(l);
             }
-            // During the tour, "skip" / "stop" said to Alex steer the tour.
-            const cmd = tourRef.current.step ? tourCommand(text) : null;
-            if (cmd) endStepRef.current(cmd);
+            // During the tour, "skip" / "stop" / "pause" said to Alex steer the tour; outside it,
+            // "pause" / "wait" puts Alex on hold (GCS).
+            // Their words arrive in pieces ("skip", then "skip please"): a command counts once.
+            const seen = cmdSeenRef.current;
+            const fresh = seen && text.startsWith(seen) ? text.slice(seen.length) : text;
+            const cmd = tourCommand(fresh);
+            cmdSeenRef.current = cmd ? text : text.startsWith(seen) ? seen : "";
+            if (cmd === "resume") resumeByVoiceRef.current();
+            else if (cmd && tourRef.current.step) endStepRef.current(cmd);
+            else if (cmd === "pause" && !tourRef.current.resume) holdRef.current(true); // not while a tour is paused
           }
         },
         onTurnComplete: () => {
@@ -396,7 +439,9 @@ export function Assistant() {
         onUnfaithful: () => setNote(ui(langRef.current).checkPrice),
         onPaused: () => {
           setAlexState("paused");
-          setVideoMode(false);
+          // Keep his last frame on screen (the box doesn't vanish); only stop counting video time.
+          if (videoRef.current && videoSinceRef.current) addVideoMs(Date.now() - videoSinceRef.current);
+          videoSinceRef.current = 0;
           setStatus("idle");
         },
         onClosed: () => {
@@ -570,7 +615,8 @@ export function Assistant() {
   // ---- speaking a fixed line (tour lines, payment results): Alex if he's on, else the voice ----
 
   const sayLine = useCallback(
-    async (text: string, l: AssistantLang) => {
+    async (text: string, l: AssistantLang): Promise<PresentResult | "voice"> => {
+      if (alexRef.current === "paused") await continueAlex(); // asleep after silence: wake him for the line
       if (alexRef.current === "live" || alexRef.current === "paused") {
         setTurns((t) => [...t, { role: "assistant", text }]);
         alexBubbleRef.current = null;
@@ -581,13 +627,17 @@ export function Assistant() {
         scriptingRef.current = false;
         alexBubbleRef.current = null;
         setStatus("idle");
-        if (r !== "closed") return;
+        if (r === "done" && tourRef.current.step) quietAlexUntilNextLine();
+        // Only when Alex is really gone does the browser voice say the line instead. A line the
+        // visitor stopped (skip / stop / pause) stays stopped: no second voice.
+        if (r !== "closed" || (alexRef.current as AlexState) !== "off") return r; // may have changed while he spoke
       } else setTurns((t) => [...t, { role: "assistant", text }]);
       setStatus("speaking");
       await new Promise<void>((resolve) => void say(text, l, resolve));
       setStatus("idle");
+      return "voice";
     },
-    [say],
+    [say, continueAlex],
   );
 
   // Read the payment result aloud when the visitor has been using the guide (the tour reads it itself).
@@ -661,7 +711,7 @@ export function Assistant() {
         if (alexRef.current !== "off" || stepDone || signal.aborted || micBlockedRef.current || !recognitionSupported()) return;
         startListening((heard) => {
           const cmd = tourCommand(heard);
-          if (cmd && !heardOwnLine(cmd, speakingLine)) endStep(cmd);
+          if (cmd && cmd !== "resume" && !heardOwnLine(cmd, speakingLine)) endStep(cmd);
           else setTimeout(listen, 300);
         });
       };
@@ -670,7 +720,22 @@ export function Assistant() {
         listen();
         const line = step.line[tourLang(langRef.current || l)];
         speakingLine = line;
-        await sayLine(line, langRef.current || l);
+        const said = await sayLine(line, langRef.current || l);
+        // The visitor talked over Alex. Gemini cuts him off at once, but the words ("pause", "skip"…)
+        // arrive a moment later: wait for them, so the command acts on THIS step (GCS: a voice
+        // interruption pauses the tour). No command: the tour waits while Alex answers them.
+        if (said === "interrupted" && !signal.aborted) {
+          const cutAt = Date.now();
+          await waitUntil(() => (signal.aborted ? true : null), 2500);
+          if (!signal.aborted) {
+            // Only real words pause the tour. A cut-off with nothing said (room noise, Alex's own
+            // echo, a stray turn end) just starts the line again, twice at most.
+            const spoke = lastUserSpokeRef.current > cutAt - 300;
+            const n = noiseRef.current.step === step.id ? noiseRef.current.count + 1 : 1;
+            noiseRef.current = { step: step.id, count: spoke ? 0 : n };
+            endStep(spoke || n > 2 ? "listen" : "repeat");
+          }
+        } else if (said === "done") noiseRef.current = { step: "", count: 0 };
         speakingLine = null;
         if (signal.aborted || !step.wait) return;
 
@@ -713,10 +778,32 @@ export function Assistant() {
         // Set by endStep() from a button or a voice command while the step ran.
         const end: StepEnd = (t.end as StepEnd | null) ?? "next";
         if (end === "stop") break;
+        if (end === "repeat") continue; // "continue" said over the line: present this step again
+        if (end === "listen") {
+          // GCS: the visitor talked over Alex, so the tour pauses and Alex answers them. "Continue"
+          // (said, typed, Resume, or Alex calling resume_tour) presents this step again.
+          setTour({ index: i, paused: true, waiting: false });
+          const pausedAt = Date.now();
+          // Often it was only room noise: if nobody says anything, Alex checks in (as in GCS).
+          const checkIn = setTimeout(() => {
+            if (t.resume && lastUserSpokeRef.current < pausedAt && !isAlexHeld() && alexRef.current === "live") {
+              void tellAlex(
+                "APP: The tour paused because something interrupted you, but the visitor hasn't said anything since (maybe background noise). Ask in one short sentence whether they had a question or would like to continue. If they say continue, call resume_tour.",
+              );
+            }
+          }, 8000);
+          await new Promise<void>((resolve) => (t.resume = resolve));
+          clearTimeout(checkIn);
+          t.resume = null;
+          continue;
+        }
         if (end === "pause") {
           setTour({ index: i, paused: true, waiting: false });
+          setAlexHold(true); // GCS hold: Alex hears and says nothing until Resume
           await new Promise<void>((resolve) => (t.resume = resolve));
           t.resume = null;
+          setAlexHold(false);
+          if (isAlexPaused()) await continueAlex();
           continue; // repeat the paused step from its start
         }
         // Skipping the seller sign-in skips the seller part (spec: T6 → T8).
@@ -741,11 +828,12 @@ export function Assistant() {
         setStatus("idle");
       }
     },
-    [runStep, startTask],
+    [runStep, startTask, continueAlex],
   );
 
   const stopTour = () => {
     const t = tourRef.current;
+    setAlexHold(false);
     if (t.resume) {
       t.token++;
       t.resume();
@@ -754,6 +842,71 @@ export function Assistant() {
     }
     endStep("stop");
   };
+
+  /** Pause / resume Alex in Talk mode (GCS hold). */
+  const hold = useCallback(
+    (on: boolean) => {
+      if (on === isAlexHeld()) return;
+      setAlexHold(on);
+      setHeld(on);
+      if (on) setStatus("idle");
+      else if (isAlexPaused()) void continueAlex();
+    },
+    [continueAlex],
+  );
+  useEffect(() => {
+    holdRef.current = hold;
+  }, [hold]);
+
+  useEffect(() => {
+    stopTourRef.current = stopTour;
+    resumeByVoiceRef.current = () => {
+      if (tourRef.current.resume) tourRef.current.resume();
+      else if (tourRef.current.step) endStep("repeat"); // said over a playing line: start it again
+      else if (isAlexHeld()) hold(false);
+      else if (alexRef.current === "paused") void continueAlex();
+    };
+    wakeByVoiceRef.current = async (heard) => {
+      await continueAlex();
+      setTurns((t) => [...t, { role: "user", text: heard }]);
+      userBubbleRef.current = null;
+      alexBubbleRef.current = null;
+      void tellAlex(heard);
+    };
+  });
+
+  // While Alex is paused his mic sends Gemini silence, so he can't hear "continue". As in GCS (its
+  // "Hi Alex" wake word), the browser's own speech recognition listens locally meanwhile, only for
+  // "continue" (or "stop" in the tour). Nothing of it reaches Gemini.
+  const tourPaused = Boolean(tour?.paused);
+  useEffect(() => {
+    const sleeping = alex === "paused" && !held && !tourPaused; // paused after 20 s of silence
+    if (!(held || tourPaused || sleeping) || alex === "off") return;
+    let active = true;
+    const loop = () => {
+      if (!active || micBlockedRef.current) return;
+      startListening((heard) => {
+        if (!active) return;
+        const cmd = tourCommand(heard);
+        if (cmd === "resume") return resumeByVoiceRef.current();
+        if (cmd === "stop" && tourRef.current.resume) return stopTourRef.current();
+        // Asleep while a tour step waits for the visitor: "skip" / "stop" / "pause" still steer the
+        // tour (the next line wakes Alex); anything else isn't sent to him as chat.
+        if (sleeping && tourRef.current.step) {
+          if (cmd) return endStepRef.current(cmd);
+          return void setTimeout(loop, 300);
+        }
+        // Asleep after silence: whatever they say wakes Alex, who answers it (GCS: speaking wakes him).
+        if (sleeping && heard) return void wakeByVoiceRef.current(heard);
+        setTimeout(loop, 300);
+      });
+    };
+    loop();
+    return () => {
+      active = false;
+      recognitionRef.current?.abort();
+    };
+  }, [held, tourPaused, alex, startListening]);
 
   // ---- starting the guide (only ever from a tap) ----
 
@@ -795,6 +948,8 @@ export function Assistant() {
 
   const mainButton = () => {
     if (alex === "live") {
+      setAlexHold(false);
+      setHeld(false);
       closeAlex();
       setAlexState("off");
       setVideoMode(false);
@@ -840,7 +995,8 @@ export function Assistant() {
     setDraft("");
     if (tour) {
       const cmd = tourCommand(text);
-      if (cmd) endStep(cmd);
+      if (cmd === "resume") resumeByVoiceRef.current();
+      else if (cmd) endStep(cmd);
       return;
     }
     activeRef.current = true;
@@ -852,6 +1008,7 @@ export function Assistant() {
     if (alexRef.current === "live" || alexRef.current === "paused") {
       setTurns((t) => [...t, { role: "user", text }]);
       userBubbleRef.current = null;
+      alexBubbleRef.current = null; // his answer gets its own bubble, below this message
       setAlexState("live");
       void tellAlex(text.slice(0, MAX_TURN_CHARS));
       return;
@@ -864,6 +1021,8 @@ export function Assistant() {
 
   const close = () => {
     if (tour) stopTour();
+    setAlexHold(false);
+    setHeld(false);
     handsFreeRef.current = false;
     recognitionRef.current?.abort();
     hush();
@@ -964,7 +1123,7 @@ export function Assistant() {
           aria-label={text.title}
           data-testid="assistant-panel"
           onKeyDown={(e) => e.key === "Escape" && close()}
-          className="fixed inset-x-2 bottom-2 z-50 flex max-h-[min(640px,calc(100dvh-1rem))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[380px]"
+          className="fixed inset-x-2 bottom-2 z-50 flex max-h-[min(720px,calc(100dvh-1rem))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[380px]"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <span aria-hidden className="grid size-7 place-items-center rounded-full bg-accent text-accent-ink">
@@ -982,8 +1141,13 @@ export function Assistant() {
           </header>
 
           {/* Always mounted so Alex can draw into it as soon as he starts; shown only in video mode. */}
-          <div className={cx("relative h-52 shrink-0 bg-surface-2", !video && "hidden")} data-testid="assistant-avatar">
-            <video ref={attachAlexVideo} playsInline className="size-full object-cover object-[50%_38%]" aria-label={text.aiLabel} />
+          {/* The avatar video is a tall portrait (704×1280) whose head runs from about 21% to 57% of its
+              height. A 280 px box cropped at 32% shows 19%–60%: his whole face, hair to chin. */}
+          <div className={cx("relative h-[280px] shrink-0 bg-surface-2", !video && "hidden")} data-testid="assistant-avatar">
+            <video ref={attachAlexVideo} playsInline className="size-full object-cover object-[50%_32%]" aria-label={text.aiLabel} />
+            {alex === "paused" && !tour && (
+              <span className="absolute inset-x-0 top-2 mx-auto w-fit rounded-full bg-surface/90 px-3 py-1 text-xs font-medium text-ink-2">{text.pausedOverlay}</span>
+            )}
             <span className="absolute bottom-2 left-2 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] font-medium text-ink-2">{text.aiLabel}</span>
           </div>
 
@@ -1071,6 +1235,7 @@ export function Assistant() {
               <p className="max-w-[85%] self-end rounded-2xl border border-dashed border-accent px-3 py-2 text-sm text-ink-2">{interim}</p>
             )}
             {tour?.waiting && <p className="self-start text-xs text-ink-3">{text.waiting}</p>}
+            {tour?.paused && <p className="self-start text-xs text-ink-3">{text.tourPausedNote}</p>}
             {status === "thinking" && (
               <p className="flex items-center gap-1 self-start rounded-2xl bg-surface-2 px-3 py-2" aria-label={text.thinking}>
                 <Dot delay="0ms" />
@@ -1087,7 +1252,9 @@ export function Assistant() {
           )}
 
           <footer className="flex flex-col gap-2 border-t border-line px-4 py-3">
+            {held && !tour && <p className="text-xs text-ink-3">{text.heldNote}</p>}
             {(!tour || !alexOn) && (
+              <div className="flex gap-2">
               <button
                 type="button"
                 onClick={mainButton}
@@ -1095,7 +1262,7 @@ export function Assistant() {
                 disabled={status === "thinking" || alex === "starting"}
                 data-testid="assistant-main"
                 className={cx(
-                  "inline-flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors",
+                  "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60",
                   status === "listening" ? "bg-danger text-white" : "bg-accent text-accent-ink hover:bg-accent-strong",
                 )}
@@ -1103,6 +1270,18 @@ export function Assistant() {
                 <MicIcon />
                 {mainLabel}
               </button>
+              {alex === "live" && !tour && (
+                <button
+                  type="button"
+                  onClick={() => hold(!held)}
+                  aria-pressed={held}
+                  data-testid="assistant-hold"
+                  className="h-11 shrink-0 rounded-xl border border-line-strong px-4 text-sm font-medium text-ink hover:bg-surface-2"
+                >
+                  {held ? text.unhold : text.hold}
+                </button>
+              )}
+              </div>
             )}
             <form
               className="flex gap-2"
