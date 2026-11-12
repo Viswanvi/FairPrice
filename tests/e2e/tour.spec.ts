@@ -550,6 +550,26 @@ test("if Alex can't connect, the tour still runs with the browser voice (or text
   await expect(page.getByTestId("assistant-avatar")).toBeHidden();
 });
 
+test("when Alex can't connect, the earlier guide greets once, however often Talk is tapped", async ({ page }) => {
+  await connection(page, SLOW);
+  await page.routeWebSocket("**/ws/alex", (ws) => ws.close());
+  await page.goto("/");
+  await page.getByTestId("assistant-welcome").getByRole("button", { name: "Talk to Alex" }).click();
+  const panel = page.getByTestId("assistant-panel");
+  const greeting = "Hi! I'm the FairPrice AI guide. Do you want to buy something, or sell your own product?";
+  await expect(panel.getByText(greeting, { exact: true })).toHaveCount(1);
+  await expect(panel).toContainText("Alex isn't available right now");
+
+  const main = page.getByTestId("assistant-main");
+  // The earlier guide listens after greeting: a tap stops that, and the next is "Talk to Alex" again.
+  await expect(main).toHaveText(/Listening…|Talk to Alex/);
+  if ((await main.textContent())?.includes("Listening")) await main.click();
+  await expect(main).toHaveText(/Talk to Alex/);
+  await main.click(); // tapped again while Alex is still away
+  await page.waitForTimeout(1500);
+  await expect(panel.getByText(greeting, { exact: true })).toHaveCount(1);
+});
+
 test("the visitor can switch the guide to text", async ({ page }) => {
   await connection(page, FAST);
   await fakeAlex(page);

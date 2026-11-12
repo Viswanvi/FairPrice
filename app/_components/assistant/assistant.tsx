@@ -979,9 +979,15 @@ export function Assistant() {
     setNote(ui(langRef.current).noAlex);
     const l = langRef.current;
     const greeting = ui(l).greeting;
+    handsFreeRef.current = true;
+    // The earlier guide greets once per conversation: tapped again while Alex is still away, it
+    // just listens instead of adding (and saying) the same greeting again.
+    if (turnsRef.current.some((t) => t.role === "assistant" && t.text === greeting)) {
+      afterSpeaking();
+      return;
+    }
     setTurns((t) => [...t, { role: "assistant", text: greeting }]);
     setStatus("speaking");
-    handsFreeRef.current = true;
     void say(greeting, l, afterSpeaking);
   };
 
